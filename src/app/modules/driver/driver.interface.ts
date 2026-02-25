@@ -31,7 +31,7 @@ export interface IDriver {
 
   approvalStatus: TDriverApprovalStatus;
   isOnline: boolean;
-
+  isOnRide: boolean;
   totalEarnings: number;
   totalTrips: number;
   walletBalance: number;

@@ -89,7 +89,10 @@ const driverSchema = new Schema<IDriver, DriverModel>(
       type: Boolean,
       default: false,
     },
-
+    isOnRide: {
+      type: Boolean,
+      default: false
+    },
     totalEarnings: { type: Number, default: 0 },
     totalTrips: { type: Number, default: 0 },
     walletBalance: { type: Number, default: 0 },
