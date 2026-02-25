@@ -30,13 +30,17 @@ const login = async (payload: TLogin) => {
     name: string;
     profileImage: string;
     role: string;
+    driverProfileId: string;
     email: string;
+    country: string;
   } = {
     userId: user?._id?.toString() as string,
     name: user.name || "",
     profileImage: user.profileImage || "",
     email: user.email,
     role: user?.role,
+    driverProfileId: user?.driverProfileId || "",
+    country: user?.country
   };
 
 

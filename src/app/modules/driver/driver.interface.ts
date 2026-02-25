@@ -1,7 +1,8 @@
 import { Types, Model } from 'mongoose';
 
-export type TVehicleType = 'car' | 'motorcycle';
+export type TDriverType = 'car' | 'motorcycle';
 export type TDriverApprovalStatus = 'pending' | 'verified' | 'rejected';
+export type TVehicleType = 'MINO_GO' | 'MINO_COMFORT' | 'MINO_XL' | 'MINO_MOTO';
 
 export type TLocation = {
   type: 'Point';
@@ -10,7 +11,7 @@ export type TLocation = {
 
 export interface IDriver {
   userId: Types.ObjectId; // reference to User
-  // driverType: TVehicleType;
+  driverType: TDriverType;
   licenseNumber: string;
   licenseExpiryDate: Date;
   licenseImage: string;
@@ -19,7 +20,7 @@ export interface IDriver {
   vehicleBrand: string;
   vehicleModel: string;
   vehicleColor: string;
-  vehicleType: string;
+  vehicleType: TVehicleType;
   vehicleImages: string[]; // multiple images of vehicle
   
   registrationImage: string;

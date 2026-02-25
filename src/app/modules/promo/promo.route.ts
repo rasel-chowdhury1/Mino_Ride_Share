@@ -17,27 +17,31 @@ router
         auth(USER_ROLE.ADMIN), 
         PromoController.getAllPromos
     )
+        /** Passenger routes */
+    .get(
+        '/public/active',
+        auth(USER_ROLE.PASSENGER, USER_ROLE.DRIVER ),
+        PromoController.getActivePromosForUser
+    )
+
     .get(
         '/:id', 
         auth(USER_ROLE.ADMIN), 
         PromoController.getPromoById
     )
+
     .patch(
         '/update/:id', 
         auth(USER_ROLE.ADMIN), 
         PromoController.updatePromo
     )
+    
     .delete(
         '/:id', 
         auth(USER_ROLE.ADMIN), 
         PromoController.deletePromo
-    )
-
-    /** Passenger routes */
-    .get(
-        '/public/active',
-        auth(USER_ROLE.PASSENGER, USER_ROLE.DRIVER ),
-        PromoController.getActivePromosForUser
     );
+
+
 
 export const PromoRoutes = router;

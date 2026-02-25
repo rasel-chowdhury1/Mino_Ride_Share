@@ -19,6 +19,9 @@ const LocationSchema = new Schema(
   { _id: false }
 );
 
+// Create 2dsphere index for location
+LocationSchema.index({ location: '2dsphere' });
+
 const RideSchema = new Schema<IRide>(
   {
     country: {
@@ -80,26 +83,91 @@ const RideSchema = new Schema<IRide>(
       default: 'PENDING',
     },
 
-    distanceKm: Number,
-    durationMin: Number,
+    distanceKm: {
+      type: Number,
+      required: true,
+      default: 0
+    },
+    durationMin: {
+      type: Number,
+      required: true,
+      default: 0
+    },
 
-    estimatedFare: Number,
-    totalFare: Number,
+    estimatedFare: {
+      type: Number,
+      required: true,
+      default: 0
+    },
+    totalFare: {
+      type: Number,
+      required: true,
+      default: 0
+    },
 
-    driverEarning: Number,
-    adminCommission: Number,
+    driverEarning: {
+      type: Number,
+      required: true,
+      default: 0
+    },
+    adminCommission: {
+      type: Number,
+      required: true,
+      default: 0
+    },
 
-    receiverName: String,
-    receiverPhone: String,
+    promo: {
+      type: Schema.Types.ObjectId,
+      ref: 'Promo',
+    },
+    promoDiscount: {
+      type: Number, // store the discount applied
+      default: 0,
+    },
+
+    receiverName: {
+      type: String,
+      default: '',
+    },
+    receiverPhone: {
+      type: String,
+      default: '',
+    },
 
     scheduledAt: Date,
 
-    cancelledBy: {
-      type: String,
-      enum: ['PASSENGER', 'DRIVER', 'SYSTEM'],
+    driverAcceptedAt: Date,
+
+    statusHistory: {
+      type: [
+        {
+          status: { type: String, enum: ['REQUESTED','ACCEPTED','ARRIVED_PICKUP','ONGOING','ARRIVED_DROPOFF','COMPLETED','CANCELLED'] },
+          changedAt: { type: Date, default: Date.now }
+        }
+      ],
+      default: []
     },
 
-    cancellationReason: String,
+    cancelledBy: {
+      type: String
+    },
+    reason: {
+      type: String,
+    },
+
+    cancellations: [
+      {
+        cancelledBy: {
+          type: String,
+          enum: ['PASSENGER', 'DRIVER', 'SYSTEM'],
+          required: true,
+        },
+        reason: { type: String },
+        details: { type: String },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
+    
 
     isDeleted: {
       type: Boolean,

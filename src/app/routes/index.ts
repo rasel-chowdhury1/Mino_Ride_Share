@@ -7,6 +7,7 @@ import { notificationRoutes } from "../modules/notifications/notifications.route
 import { FareRoutes } from "../modules/fare/fare.route";
 import { PromoRoutes } from "../modules/promo/promo.route";
 import { FeedbackRoutes } from "../modules/feedback/feedback.route";
+import { RideRoutes } from "../modules/ride/ride.route";
 
 const router = Router();
 
@@ -34,6 +35,10 @@ const moduleRoutes = [
   {
     path: "/promo",
     route: PromoRoutes
+  },
+  {
+    path: "/ride",
+    route: RideRoutes
   },
   {
     path: "/feedback",

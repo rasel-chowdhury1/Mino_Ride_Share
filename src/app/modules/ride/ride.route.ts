@@ -7,15 +7,21 @@ const router = Router();
 
 /** Passenger */
 router.post(
-    '/', 
+    '/create', 
     auth(USER_ROLE.PASSENGER), 
     RideController.createRide
 )
 
-.get(
+.post(
   '/estimate',
-  auth('passenger'),
+  auth(USER_ROLE.PASSENGER),
   RideController.getRideEstimates
+)
+
+.post(
+  "/:rideId/accept",
+  auth(USER_ROLE.DRIVER),
+  RideController.driverAcceptRide
 )
 
 .get(
@@ -29,6 +35,12 @@ router.post(
     '/driver', 
     auth(USER_ROLE.DRIVER), 
     RideController.getDriverRides
+)
+
+.get(
+  "/nearest",
+  auth(USER_ROLE.DRIVER),
+  RideController.getNearestRides
 )
 
 .patch(

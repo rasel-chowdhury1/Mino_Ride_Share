@@ -24,6 +24,8 @@ userRoutes
     userController.userCreateVarification,
   )
 
+
+  
   .post(
     "/create-superadmin",
     auth(USER_ROLE.ADMIN),

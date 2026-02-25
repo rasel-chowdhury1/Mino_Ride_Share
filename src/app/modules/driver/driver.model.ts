@@ -37,11 +37,11 @@ const driverSchema = new Schema<IDriver, DriverModel>(
       required: true,
       unique: true,
     },
-    // driverType: {
-    //   type: String,
-    //   enum: ['car', 'motorcycle'],
-    //   required: true,
-    // },
+    driverType: {
+      type: String,
+      enum: ['car', 'motorcycle'],
+      required: true,
+    },
 
     licenseNumber: { type: String, required: true },
     licenseExpiryDate: { type: Date, required: true },
@@ -53,6 +53,7 @@ const driverSchema = new Schema<IDriver, DriverModel>(
     vehicleColor: { type: String, required: true },
     vehicleType: {
       type: String,
+      enum: ["MINO_GO", "MINO_COMFORT", "MINO_XL", "MINO_MOTO"],
       required: true,
     },
     vehicleImages: {

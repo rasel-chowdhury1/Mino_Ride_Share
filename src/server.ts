@@ -9,6 +9,10 @@ import config from './app/config';
 import createDefaultAdmin from './app/DB/createDefaultAdmin';
 import { initSocketIO } from './socketIo';
 import { logger } from './app/utils/logger';
+import { Ride } from './app/modules/ride/ride.model';
+import { Driver } from './app/modules/driver/driver.model';
+import cron from 'node-cron';
+
 
 // Create a new HTTP server
 const socketServer = createServer();
@@ -60,6 +64,41 @@ async function main() {
       );
     // Initialize Socket.IO
     initSocketIO(socketServer);
+
+    // Run every minute
+    cron.schedule('* * * * *', async () => {
+      const now = new Date();
+      const notifyTime = new Date(now.getTime() + 15 * 60 * 1000); // 15 mins later
+
+      // Find rides scheduled ~15 mins from now
+      const rides = await Ride.find({
+        status: 'REQUESTED',
+        driver: null,
+        scheduledAt: {
+          $gte: new Date(notifyTime.getTime() - 60 * 1000), // 1 min before
+          $lte: new Date(notifyTime.getTime() + 60 * 1000), // 1 min after
+        },
+      });
+
+      for (const ride of rides) {
+        // Find nearby drivers (example radius 5km)
+        const nearbyDrivers = await Driver.find({
+          location: {
+            $near: {
+              $geometry: ride.pickupLocation.location,
+              $maxDistance: 5000, // 5km radius
+            },
+          },
+          isAvailable: true,
+        });
+
+        // Send notification to drivers
+        for (const driver of nearbyDrivers) {
+          // Replace this with your push notification / socket implementation
+          console.log(`Notify driver ${driver._id} about ride ${ride._id}`);
+        }
+      }
+    });
 
     });
   } catch (err) {

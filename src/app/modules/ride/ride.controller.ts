@@ -2,9 +2,12 @@ import { Request, Response } from 'express';
 import { RideService } from './ride.service';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
-import { estimateRideOptions } from '../../utils/rideEstimate.service';
 
 const createRide = catchAsync(async (req: Request, res: Response) => {
+  const {userId, country} = req.user;
+  
+  req.body.passenger = userId;
+  req.body.country = country;
   const result = await RideService.createRide(req.body);
 
   sendResponse(res, {
@@ -16,17 +19,44 @@ const createRide = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const driverAcceptRide = catchAsync(async (req: Request, res: Response) => {
+
+  const {userId, driverProfileId} = req.user;
+  const {rideId} = req.params;
+  const result = await RideService.driverAcceptRide(rideId, driverProfileId);
+
+  sendResponse(res, {
+    statusCode: 201,
+    success: true,
+    message: 'Ride accepted successfully',
+    data: result,
+  });
+
+})
+
+const updateRideStatus = catchAsync(async (req: Request, res: Response) => {
+
+  const {rideId} = req.params;
+  const {status} = req.body;
+  const result = await RideService.updateRideStatus(rideId, status);
+
+  sendResponse(res, {
+    statusCode: 201,
+    success: true,
+    message: 'Ride status updated successfully',
+    data: result,
+  });
+
+})
+
+
 const getRideEstimates = catchAsync(async (req, res) => {
-  const user = req.user;
-  const { pickupLocation, dropoffLocation } = req.body;
+    const { distanceKm } = req.body;
+    const country = req.user?.country;
 
-  // distance calculation (replace later with Google Maps)
-  const distanceKm = 5.2;
-
-  const data = await estimateRideOptions({
-    pickupLocation,
+  const data = await RideService.estimateRideOptions({
     distanceKm,
-    country: user.country,
+    country,
   });
 
   sendResponse(res, {
@@ -55,10 +85,10 @@ const getPassengerRides = catchAsync(async (req: Request, res: Response) => {
 
 const getDriverRides = catchAsync(async (req: Request, res: Response) => {
 
-  const {userId} = req.user;
+  const {userId, driverProfileId} = req.user;
 
   const result = await RideService.getDriverRides(
-    req.user.driverProfileId,
+    driverProfileId,
     req.query
   );
 
@@ -71,20 +101,6 @@ const getDriverRides = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
-const updateRideStatus = catchAsync(async (req: Request, res: Response) => {
-  const result = await RideService.updateRideStatus(
-    req.params.id,
-    req.body.status,
-    req.body
-  );
-
-  sendResponse(res, {
-    statusCode: 200,
-    success: true,
-    message: 'Ride status updated',
-    data: result,
-  });
-});
 
 const adminGetAllRides = catchAsync(async (req: Request, res: Response) => {
   const result = await RideService.adminGetAllRides(req.query);
@@ -98,11 +114,35 @@ const adminGetAllRides = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+// GET nearest rides for driver
+const getNearestRides = catchAsync(async (req: Request, res: Response) => {
+  const { longitude, latitude, maxDistance } = req.query;
+
+  if (!longitude || !latitude) {
+    throw new Error('Driver location required');
+  }
+
+  const rides = await RideService.getNearestRides({
+    driverLocation: [Number(longitude), Number(latitude)],
+    maxDistanceMeters: maxDistance ? Number(maxDistance) : undefined,
+  });
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Nearest rides fetched successfully',
+    data: rides,
+  });
+});
+
+
 export const RideController = {
   createRide,
   getRideEstimates,
   getPassengerRides,
   getDriverRides,
+  driverAcceptRide,
   updateRideStatus,
   adminGetAllRides,
+  getNearestRides
 };
