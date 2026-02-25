@@ -5,36 +5,35 @@ const NotificationSchema = new Schema<INotification>(
   {
     userId: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'User', // the sender of the notification, can be admin or driver
       required: true,
     },
     receiverId: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'User', // the target user (driver or rider)
       required: true,
     },
-
     // Unified message object
     message: {
-      fullName: { type: String, default: "" },
-      image: { type: String, default: "" },
-      text: { type: String, required: true },
-      photos: { type: [String], default: [] },
+      fullName: { type: String, default: "" }, // sender's name
+      image: { type: String, default: "" },    // optional sender image
+      text: { type: String, required: true }, // notification content
+      photos: { type: [String], default: [] }, // optional images
     },
-
     type: {
       type: String,
       enum: [
-        'technicianPendingApproval', // user → technician
-        'serviceOrderPending',       // user → technician
-        'serviceOrderAccepted',      // technician → user
-        'technicianVerified',
-        'technicianDeclined',
-        'serviceOrderCompleted'
+        'newRideRequest',       // rider → driver
+        'tripCancelled',        // rider or driver → other party
+        'paymentConfirmed',     // system → rider/driver
+        'adminApprovalUpdate',  // admin → user
+        'promotionAlert',       // system → user
+        'bonusAlert',           // system → user
+        'driverVerified',       // system/admin → driver
+        'rideCompleted',        // system → rider/driver
       ],
       required: true,
     },
-
     isRead: {
       type: Boolean,
       default: false,

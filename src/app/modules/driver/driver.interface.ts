@@ -10,7 +10,7 @@ export type TLocation = {
 
 export interface IDriver {
   userId: Types.ObjectId; // reference to User
-  driverType: TVehicleType;
+  // driverType: TVehicleType;
   licenseNumber: string;
   licenseExpiryDate: Date;
   licenseImage: string;

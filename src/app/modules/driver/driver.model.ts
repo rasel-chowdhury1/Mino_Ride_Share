@@ -37,11 +37,11 @@ const driverSchema = new Schema<IDriver, DriverModel>(
       required: true,
       unique: true,
     },
-    driverType: {
-      type: String,
-      enum: ['car', 'motorcycle'],
-      required: true,
-    },
+    // driverType: {
+    //   type: String,
+    //   enum: ['car', 'motorcycle'],
+    //   required: true,
+    // },
 
     licenseNumber: { type: String, required: true },
     licenseExpiryDate: { type: Date, required: true },
@@ -66,7 +66,7 @@ const driverSchema = new Schema<IDriver, DriverModel>(
 
     country: {
       type: String,
-      required: true,
+      required: false,
       uppercase: true,
       index: true,
     },
@@ -76,7 +76,7 @@ const driverSchema = new Schema<IDriver, DriverModel>(
     },
     currentLocation: {
       type: locationSchema,
-      required: true,
+      required: false,
     },
 
     approvalStatus: {

@@ -9,6 +9,8 @@ import { User } from '../modules/user/user.model';
 
 const auth = (...userRoles: string[]) => {
   return catchAsync(async (req, res, next) => {
+
+    console.log(req.headers);
     const token: any = req.headers?.authorization || req?.headers?.token;
 
     if (!token) {
@@ -20,6 +22,7 @@ const auth = (...userRoles: string[]) => {
       access_secret: config.jwt_access_secret as string,
     });
      
+    console.log("decodeData", decodeData);
     const { role, userId } = decodeData;
 
     const isUserExist = await User.IsUserExistById(userId);
