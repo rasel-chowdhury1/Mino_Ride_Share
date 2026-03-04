@@ -19,6 +19,12 @@ router.post(
 )
 
 .post(
+  '/motorcycle-estimate',
+  auth(USER_ROLE.PASSENGER),
+  RideController.getMotorcycleEstimates
+)
+
+.post(
   "/:rideId/accept",
   auth(USER_ROLE.DRIVER),
   RideController.driverAcceptRide

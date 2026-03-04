@@ -1,6 +1,50 @@
 import { Schema, model } from 'mongoose';
 import { IRide } from './ride.interface';
 
+
+
+/*
+|--------------------------------------------------------------------------
+| Parcel Details Schema (only used when serviceType === 'PARCEL')
+|--------------------------------------------------------------------------
+*/
+
+const ParcelDetailsSchema = new Schema(
+  {
+    itemType: {
+      type: String,
+      enum: ['DOCUMENT', 'SMALL_PARCEL', 'FOOD_ITEM'],
+      required: true,
+    },
+    approxWeightKg: {
+      type: Number,
+      required: true,
+    },
+    isFragile: {
+      type: Boolean,
+      default: false,
+    },
+    notes: {
+      type: String,
+      default: '',
+    },
+    instructions: {
+      type: String,
+      default: '',
+    },
+    receiverName: {
+      type: String,
+      required: true,
+    },
+    receiverPhone: {
+      type: String,
+      required: true,
+    },
+
+  },
+  { _id: false }
+);
+
 const LocationSchema = new Schema(
   {
     address: String,
@@ -125,18 +169,29 @@ const RideSchema = new Schema<IRide>(
       default: 0,
     },
 
-    receiverName: {
+        // INSTANT = send now, SCHEDULED = send at a specific time
+    pickupType: {
       type: String,
-      default: '',
-    },
-    receiverPhone: {
-      type: String,
-      default: '',
+      enum: ['INSTANT', 'SCHEDULED'],
+      required: true,
+      default: 'INSTANT',
     },
 
-    scheduledAt: Date,
+    // Only required when pickupType === 'SCHEDULED'
+    scheduledAt: {
+      type: Date,
+      default: null,
+    },
 
-    driverAcceptedAt: Date,
+    parcelDetails: {
+      type: ParcelDetailsSchema,
+      default: null,
+    },
+
+    driverAcceptedAt: {
+      type: Date,
+      default: null,
+    },
 
     statusHistory: {
       type: [

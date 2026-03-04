@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { RideService } from './ride.service';
 import catchAsync from '../../utils/catchAsync';
 import sendResponse from '../../utils/sendResponse';
+import { estimateMotoOptions, estimateRideOptions } from './ride.utils';
 
 const createRide = catchAsync(async (req: Request, res: Response) => {
   const {userId, country} = req.user;
@@ -51,18 +52,35 @@ const updateRideStatus = catchAsync(async (req: Request, res: Response) => {
 
 
 const getRideEstimates = catchAsync(async (req, res) => {
-    const { distanceKm } = req.body;
+    const { distanceKm, pickupLat, pickupLng} = req.body;
     const country = req.user?.country;
 
-  const data = await RideService.estimateRideOptions({
-    distanceKm,
-    country,
-  });
+
+    console.log("country", country);
+  const data = await estimateRideOptions({distanceKm, country, pickupLat, pickupLng });
+
+  console.log({data});  
 
   sendResponse(res, {
     statusCode: 201,
     success: true,
     message: 'Ride estimates retrieved',
+    data: data,
+  });
+});
+
+const getMotorcycleEstimates = catchAsync(async (req, res) => {
+    const { distanceKm, pickupLat, pickupLng} = req.body;
+    const country = req.user?.country;
+
+  const data = await estimateMotoOptions({distanceKm, country, pickupLat, pickupLng });
+
+  console.log({data});  
+
+  sendResponse(res, {
+    statusCode: 201,
+    success: true,
+    message: 'Motorcycle estimates retrieved',
     data: data,
   });
 });
@@ -138,6 +156,7 @@ const getNearestRides = catchAsync(async (req: Request, res: Response) => {
 
 export const RideController = {
   createRide,
+  getMotorcycleEstimates,
   getRideEstimates,
   getPassengerRides,
   getDriverRides,

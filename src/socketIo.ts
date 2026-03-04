@@ -1,236 +1,250 @@
-import { Server as SocketIOServer, Socket } from "socket.io";
-import { Server as HttpServer } from "http";
-import express, { Application } from "express";
-import httpStatus from "http-status";
-import AppError from "./app/error/AppError";
-import { verifyToken } from "./app/utils/tokenManage";
-import config from "./app/config";
-import { User } from "./app/modules/user/user.model";
-import mongoose from "mongoose";
-import Notification from "./app/modules/notifications/notifications.model";
-import colors from 'colors';
+// ─────────────────────────────────────────────────────────────────────────────
+// socketIo.ts
+// Public API for the socket layer.
+//
+// Exports:
+//   io              — the live Socket.IO server instance
+//   initSocketIO    — bootstraps the socket server
+//   connectedUsers  — userId → { socketID } live registry
+//   emitNotification        — send a notification to a specific user
+//   sentNotificationFor*    — domain-specific notification helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Define the socket server port
-const socketPort: number = parseInt(process.env.SOCKET_PORT || "9020", 10);
+import mongoose from 'mongoose';
+import { User } from './app/modules/user/user.model';
+import AppError from './app/error/AppError';
+import Notification from './app/modules/notifications/notifications.model';
+import { sendNotificationEmail } from './app/utils/emailNotification';
+import { getIO, initSocketServer } from './socket/socket.server';
+import { connectedUsers } from './socket/notification.events';
 
-const app: Application = express();
+// ── Re-exports ─────────────────────────────────────────────────────────────
 
-declare module "socket.io" {
-  interface Socket {
-    user?: {
-      _id: string;
-      name: string;
-      email: string;
-      role: string;
-    };
-  }
-}
+export { getIO as io };
+export { initSocketServer as initSocketIO };
+export { connectedUsers };
 
-// Initialize the Socket.IO server
-let io: SocketIOServer;
-
-export const connectedUsers = new Map<
-  string,
-  {
-    socketID: string;
-  }
->();
-
-
-
-
-export const initSocketIO = async (server: HttpServer): Promise<void> => {
-
-  const { Server } = await import("socket.io");
-
-  io = new Server(server, {
-    cors: {
-      origin: "*", // Replace with your client's origin
-      methods: ["GET", "POST"],
-      allowedHeaders: ["my-custom-header"], // Add any custom headers if needed
-      credentials: true,
-    },
-  });
-
-   // Start the HTTP server on the specified port
-  server.listen(socketPort, () => {
-    console.log(
-      //@ts-ignore
-      `---> ${config.project_name} socket is listening on : http://${config.ip}:${config.socket_port}`.yellow
-        .bold,
-    );
-  });
-
-
-  // Authentication middleware: now takes the token from headers.
-  io.use(async (socket: Socket, next: (err?: any) => void) => {
-    // Extract token from headers (ensure your client sends it in headers)
-    const token =
-      (socket.handshake.auth.token as string) ||
-      (socket.handshake.headers.token as string) ||
-      (socket.handshake.headers.authorization as string);
-
-    if (!token) {
-      return next(
-        new AppError(
-          httpStatus.UNAUTHORIZED,
-          "Authentication error: Token missing",
-        ),
-      );
-    }
-
-    const userDetails = verifyToken({token, access_secret: config.jwt_access_secret as string});
-
-
-    if (!userDetails) {
-      return next(new Error("Authentication error: Invalid token"));
-    }
-
-    const user = await User.findById(userDetails.userId);
-    if (!user) {
-      return next(new Error("Authentication error: User not found"));
-    }
-
-    socket.user = {
-        _id: user._id.toString(), // Convert _id to string if necessary
-        name: user.name as string,
-        email: user.email,
-        role: user.role,
-      };;
-    next();
-  });
-
-
-   io.on("connection", (socket: Socket) => {
-    
-    // =================== try catch 1 start ================
-    try {
-          // Automatically register the connected user to avoid missing the "userConnected" event.
-    if (socket.user && socket.user._id) {
-      connectedUsers.set(socket.user._id.toString(), { socketID: socket.id });
-      console.log(
-        `Registered user ${socket.user._id.toString()} with socket ID: ${socket.id}`,
-      );
-    }
-
-    // (Optional) In addition to auto-registering, you can still listen for a "userConnected" event if needed.
-    socket.on("userConnected", ({ userId }: { userId: string }) => {
-      connectedUsers.set(userId, { socketID: socket.id });
-      console.log(`User ${userId} connected with socket ID: ${socket.id}`);
-    });
-
-      //----------------------online array send for front end------------------------//
-      io.emit('onlineUser', Array.from(connectedUsers));
-
-      // ===================== join by user id ================================
-      // socket.join(user?._id?.toString());
-
-
-
-      
-      //-----------------------Disconnect functionlity start ------------------------//
-      socket.on("disconnect", () => {
-        console.log(
-          `${socket.user?.name} || ${socket.user?.email} || ${socket.user?._id} just disconnected with socket ID: ${socket.id}`,
-        );
-  
-        // Remove user from connectedUsers map
-        for (const [key, value] of connectedUsers.entries()) {
-          if (value.socketID === socket.id) {
-
-            connectedUsers.delete(key);
-            break;
-          }
-        }
-
-        io.emit('onlineUser', Array.from(connectedUsers));
-      });
-      //-----------------------Disconnect functionlity end ------------------------//
-      
-    } catch (error) {
-
-      console.error('-- socket.io connection error --', error);
-
-      // throw new Error(error)
-      //-----------------------Disconnect functionlity start ------------------------//
-      socket.on("disconnect", () => {
-        console.log(
-          `${socket.user?.name} || ${socket.user?.email} || ${socket.user?._id} just disconnected with socket ID: ${socket.id}`,
-        );
-  
-        // Remove user from connectedUsers map
-        for (const [key, value] of connectedUsers.entries()) {
-          if (value.socketID === socket.id) {
-            connectedUsers.delete(key);
-            break;
-          }
-        }
-        io.emit('onlineUser', Array.from(connectedUsers));
-      });
-      //-----------------------Disconnect functionlity end ------------------------//
-    }
-    // ==================== try catch 1 end ==================== //
-  });
-
-
-  
-};
-
-// Export the Socket.IO instance
-export { io };
-
-
-
+// ── emitNotification ──────────────────────────────────────────────────────────
+// Emits a real-time notification to the target user's socket and saves it
+// to the database.
 
 export const emitNotification = async ({
   userId,
   receiverId,
   userMsg,
-  type
+  type,
 }: {
   userId: mongoose.Types.ObjectId;
   receiverId: mongoose.Types.ObjectId;
-  userMsg?: {fullName: string,image: string, text: string, photos?: string[]};
+  userMsg?: { image: string; text: string; photos?: string[] };
   type?: string;
 }): Promise<void> => {
+  const io = getIO();
 
-  if (!io) {
-    throw new Error("Socket.IO is not initialized");
-  }
-
-  // Get the socket ID of the specific user
   const userSocket = connectedUsers.get(receiverId.toString());
 
-  // Fetch unread notifications count for the receiver before creating the new notification
   const unreadCount = await Notification.countDocuments({
-    receiverId: receiverId,
-    isRead: false,  // Filter by unread notifications
+    receiverId,
+    isRead: false,
   });
 
-  // Notify the specific user
+  // Emit real-time notification if user is online
   if (userMsg && userSocket) {
-
-    io.to(userSocket.socketID).emit(`notification`, {
-      // userId,
-      // message: userMsg,
+    io.to(userSocket.socketID).emit('notification', {
+      message: userMsg,
       statusCode: 200,
       success: true,
       unreadCount: unreadCount >= 0 ? unreadCount + 1 : 1,
+      timestamp: new Date(),
     });
   }
 
-   // Save notification to the database
-   const newNotification = {
-    userId, // Ensure that userId is of type mongoose.Types.ObjectId
-    receiverId, // Ensure that receiverId is of type mongoose.Types.ObjectId
+  // Persist to database
+  await Notification.create({
+    userId,
+    receiverId,
     message: userMsg,
-    type, // Use the provided type (default to "FollowRequest")
-    isRead: false, // Set to false since the notification is unread initially
-    timestamp: new Date(), // Timestamp of when the notification is created
-  };
-
-    // Save notification to the database
-   await Notification.create(newNotification);
-
+    type,
+    isRead: false,
+    timestamp: new Date(),
+  });
 };
 
+// ── sentNotificationForRideRequest ────────────────────────────────────────────
+// Notify a driver about a new ride request.
+
+export const sentNotificationForRideRequest = async ({
+  userId,
+  receiverId,
+  vehicleCategory,
+}: {
+  userId: mongoose.Types.ObjectId;
+  receiverId: mongoose.Types.ObjectId;
+  vehicleCategory?: string;
+}): Promise<void> => {
+  const sender = await User.findById(userId).select('name profileImage');
+  if (!sender) throw new AppError(404, 'User not found for notification');
+
+  const receiver = await User.findById(receiverId).select('name email');
+  if (!receiver) throw new AppError(404, 'Receiver not found for notification');
+
+  const text = `${sender.name} has requested a ${vehicleCategory || 'ride'}.`;
+
+  emitNotification({
+    userId,
+    receiverId,
+    userMsg: { image: sender.profileImage || '', text, photos: [] },
+    type: 'newRideRequest',
+  }).catch((err) => console.error('Socket notification failed:', err));
+
+  if (receiver.email) {
+    sendNotificationEmail({
+      sentTo: receiver.email,
+      subject: 'New Ride Request',
+      userName: receiver.name || '',
+      messageText: text,
+    }).catch((err) => console.error('Email notification failed:', err));
+  }
+};
+
+// ── sentNotificationForRideCancelled ─────────────────────────────────────────
+// Notify the other party when a ride is cancelled.
+
+export const sentNotificationForRideCancelled = async ({
+  userId,
+  receiverId,
+  reason,
+}: {
+  userId: mongoose.Types.ObjectId;
+  receiverId: mongoose.Types.ObjectId;
+  reason?: string;
+}): Promise<void> => {
+  const sender = await User.findById(userId).select('name profileImage');
+  const receiver = await User.findById(receiverId).select('name email');
+
+  if (!sender || !receiver) return;
+
+  const text = reason
+    ? `${sender.name} has cancelled the ride. Reason: ${reason}`
+    : `${sender.name} has cancelled the ride.`;
+
+  emitNotification({
+    userId,
+    receiverId,
+    userMsg: { image: sender.profileImage || '', text, photos: [] },
+    type: 'tripCancelled',
+  }).catch((err) => console.error('Socket notification failed:', err));
+
+  if (receiver.email) {
+    sendNotificationEmail({
+      sentTo: receiver.email,
+      subject: 'Ride Cancelled',
+      userName: receiver.name || '',
+      messageText: text,
+    }).catch((err) => console.error('Email notification failed:', err));
+  }
+};
+
+// ── sentNotificationForPaymentConfirmed ──────────────────────────────────────
+// Notify user when a payment is confirmed.
+
+export const sentNotificationForPaymentConfirmed = async ({
+  userId,
+  receiverId,
+  amount,
+}: {
+  userId: mongoose.Types.ObjectId;
+  receiverId: mongoose.Types.ObjectId;
+  amount?: number;
+}): Promise<void> => {
+  const sender = await User.findById(userId).select('name profileImage');
+  const receiver = await User.findById(receiverId).select('name email');
+
+  if (!sender || !receiver) return;
+
+  const text = amount
+    ? `Payment of ${amount} confirmed for your ride.`
+    : `Your ride payment has been confirmed.`;
+
+  emitNotification({
+    userId,
+    receiverId,
+    userMsg: { image: sender.profileImage || '', text, photos: [] },
+    type: 'paymentConfirmed',
+  }).catch((err) => console.error('Socket notification failed:', err));
+
+  if (receiver.email) {
+    sendNotificationEmail({
+      sentTo: receiver.email,
+      subject: 'Payment Confirmed',
+      userName: receiver.name || '',
+      messageText: text,
+    }).catch((err) => console.error('Email notification failed:', err));
+  }
+};
+
+// ── sentNotificationForRideCompleted ─────────────────────────────────────────
+// Notify passenger when ride is marked completed.
+
+export const sentNotificationForRideCompleted = async ({
+  userId,
+  receiverId,
+}: {
+  userId: mongoose.Types.ObjectId;
+  receiverId: mongoose.Types.ObjectId;
+}): Promise<void> => {
+  const sender = await User.findById(userId).select('name profileImage');
+  const receiver = await User.findById(receiverId).select('name email');
+
+  if (!sender || !receiver) return;
+
+  const text = `Your ride with ${sender.name} has been completed. Thank you for riding!`;
+
+  emitNotification({
+    userId,
+    receiverId,
+    userMsg: { image: sender.profileImage || '', text, photos: [] },
+    type: 'rideCompleted',
+  }).catch((err) => console.error('Socket notification failed:', err));
+
+  if (receiver.email) {
+    sendNotificationEmail({
+      sentTo: receiver.email,
+      subject: 'Ride Completed',
+      userName: receiver.name || '',
+      messageText: text,
+    }).catch((err) => console.error('Email notification failed:', err));
+  }
+};
+
+// ── sentNotificationForDriverVerified ────────────────────────────────────────
+// Notify driver when their account is verified by admin.
+
+export const sentNotificationForDriverVerified = async ({
+  userId,
+  receiverId,
+}: {
+  userId: mongoose.Types.ObjectId;
+  receiverId: mongoose.Types.ObjectId;
+}): Promise<void> => {
+  const receiver = await User.findById(receiverId).select('name email');
+  if (!receiver) return;
+
+  const text = `Congratulations! Your driver account has been verified. You can now start accepting rides.`;
+
+  emitNotification({
+    userId,
+    receiverId,
+    userMsg: { image: '', text, photos: [] },
+    type: 'driverVerified',
+  }).catch((err) => console.error('Socket notification failed:', err));
+
+  if (receiver.email) {
+    sendNotificationEmail({
+      sentTo: receiver.email,
+      subject: 'Account Verified',
+      userName: receiver.name || '',
+      messageText: text,
+    }).catch((err) => console.error('Email notification failed:', err));
+  }
+};

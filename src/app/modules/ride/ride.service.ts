@@ -1,104 +1,191 @@
 import { Types } from 'mongoose';
 import QueryBuilder from '../../builder/QueryBuilder';
-import AppError from '../../error/AppError';
 import { TVehicleType } from '../driver/driver.interface';
 import { Fare } from '../fare/fare.model';
 import { Promo } from '../promo/promo.model';
-import { AVERAGE_SPEED_KMH, ICancellation, IRide, NearestRidesProps } from './ride.interface';
+import {
+  isManagerReady,
+  broadcastToNearbyDrivers,
+  emitToPassenger,
+  emitToDriver,
+  emitToRideRoom,
+  setDriverOnRide,
+} from '../../../socket/socket.manager';
+import { SocketEvents } from '../../../socket/socket.types';
+import { logger } from '../../utils/logger';
+import {
+  AVERAGE_SPEED_KMH,
+  ICancellation,
+  IRide,
+  NearestRidesProps,
+} from './ride.interface';
 import { Ride } from './ride.model';
 
-const createRide = async (payload: IRide) => {
+// ─────────────────────────────────────────────────────────────────────────────
 
-      // Add initial statusHistory for tracking
-    payload.statusHistory = [{ status: 'REQUESTED', changedAt: new Date() }];
-    payload.distanceKm = payload.distanceKm || 0;
-    payload.durationMin = payload.durationMin || 0;
-    payload.estimatedFare = payload.estimatedFare || 0;
-    payload.totalFare = payload.totalFare || 0;
-    payload.driverEarning = payload.driverEarning || 0;
-    payload.adminCommission = payload.adminCommission || 0;
-    
-  return await Ride.create(payload);
+const createRide = async (payload: IRide) => {
+  
+  payload.statusHistory = [{ status: 'REQUESTED', changedAt: new Date() }];
+  payload.distanceKm    = payload.distanceKm    || 0;
+  payload.durationMin   = payload.durationMin   || 0;
+  payload.estimatedFare = payload.estimatedFare || 0;
+  payload.totalFare     = payload.totalFare     || 0;
+  payload.driverEarning = payload.driverEarning || 0;
+  payload.adminCommission = payload.adminCommission || 0;
+
+  // const ride = await Ride.create(payload);
+  const ride = await Ride.create(payload);
+
+
+  // Emit: notify nearby online drivers about the new ride request
+  try {
+    if (isManagerReady()) {
+
+      await broadcastToNearbyDrivers(
+        ride.pickupLocation.location.coordinates,
+        SocketEvents.RIDE_REQUESTED,
+        {
+          rideId:          ride._id.toString(),
+          passengerId:     ride.passenger.toString(),
+          vehicleCategory: ride.vehicleCategory,
+          serviceType:     ride.serviceType,
+          pickupLocation: {
+            address:     ride.pickupLocation.address,
+            coordinates: ride.pickupLocation.location.coordinates,
+          },
+          dropoffLocation: {
+            address:     ride.dropoffLocation.address,
+            coordinates: ride.dropoffLocation.location.coordinates,
+          },
+          estimatedFare: ride.estimatedFare,
+          totalFare:     ride.totalFare,
+          distanceKm:    ride.distanceKm,
+          scheduledAt:   ride.scheduledAt,
+        },
+      );
+    }
+  } catch (err) {
+    logger.warn('createRide: socket emission failed (non-critical):', err);
+  }
+
+  return ride;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const driverAcceptRide = async (rideId: string, driverId: string) => {
   const ride = await Ride.findOne({ _id: rideId, driver: null });
   if (!ride) throw new Error('Ride not found or already accepted');
 
-  ride.driver = new Types.ObjectId(driverId);
+  ride.driver          = new Types.ObjectId(driverId);
   ride.driverAcceptedAt = new Date();
-  ride.status = 'ACCEPTED';
+  ride.status          = 'ACCEPTED';
 
-  // Initialize statusHistory if undefined
-  if (!ride.statusHistory) {
-    ride.statusHistory = [];
-  }
-
+  if (!ride.statusHistory) ride.statusHistory = [];
   ride.statusHistory.push({ status: 'ACCEPTED', changedAt: new Date() });
 
-  return await ride.save();
+  const saved = await ride.save();
+
+  // Emit: tell the passenger their ride was accepted
+  try {
+    if (isManagerReady()) {
+      const payload = {
+        rideId:          saved._id.toString(),
+        driverProfileId: driverId,
+        acceptedAt:      saved.driverAcceptedAt,
+      };
+      emitToPassenger(saved.passenger.toString(), SocketEvents.RIDE_ACCEPTED, payload);
+      emitToRideRoom(rideId, SocketEvents.RIDE_ACCEPTED, payload);
+    }
+  } catch (err) {
+    logger.warn('driverAcceptRide: socket emission failed (non-critical):', err);
+  }
+
+  return saved;
 };
 
-const updateRideStatus = async (rideId: string, status: IRide['status']): Promise<IRide> => {
+// ─────────────────────────────────────────────────────────────────────────────
+
+const updateRideStatus = async (
+  rideId: string,
+  status: IRide['status'],
+): Promise<IRide> => {
   const ride = await Ride.findById(rideId);
   if (!ride) throw new Error('Ride not found');
 
-  // Update status
   ride.status = status;
-
-  // Initialize statusHistory if undefined
-  if (!ride.statusHistory) {
-    ride.statusHistory = [];
-  }
-
-  // Push new status into history
+  if (!ride.statusHistory) ride.statusHistory = [];
   ride.statusHistory.push({ status, changedAt: new Date() });
 
-  // Save and return updated ride
-  return await ride.save();
+  const saved = await ride.save();
+
+  // Emit: broadcast status change to everyone in the ride room
+  try {
+    if (isManagerReady()) {
+      const statusPayload = {
+        rideId:    saved._id.toString(),
+        status,
+        changedAt: new Date(),
+      };
+      emitToRideRoom(rideId, SocketEvents.RIDE_STATUS_UPDATED, statusPayload);
+
+      if (status === 'ONGOING') {
+        emitToRideRoom(rideId, SocketEvents.RIDE_STARTED, statusPayload);
+      } else if (status === 'COMPLETED') {
+        emitToRideRoom(rideId, SocketEvents.RIDE_COMPLETED, statusPayload);
+        if (saved.driver) setDriverOnRide(saved.driver.toString(), false);
+      }
+    }
+  } catch (err) {
+    logger.warn('updateRideStatus: socket emission failed (non-critical):', err);
+  }
+
+  return saved;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 
 const getPassengerRides = async (
   passengerId: string,
-  query: Record<string, unknown>
+  query: Record<string, unknown>,
 ) => {
   const rideQuery = new QueryBuilder(
     Ride.find({ passenger: passengerId, isDeleted: false })
       .populate('driver')
       .sort({ createdAt: -1 }),
-    query
+    query,
   )
     .filter()
     .paginate();
 
   const result = await rideQuery.modelQuery;
-  const meta = await rideQuery.countTotal();
+  const meta   = await rideQuery.countTotal();
 
   return { meta, result };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 const getDriverRides = async (
   driverId: string,
-  query: Record<string, unknown>
+  query: Record<string, unknown>,
 ) => {
-    
   const rideQuery = new QueryBuilder(
     Ride.find({ driver: driverId, isDeleted: false })
       .populate('passenger')
       .sort({ createdAt: -1 }),
-    query
+    query,
   )
     .filter()
     .paginate();
 
   const result = await rideQuery.modelQuery;
-  const meta = await rideQuery.countTotal();
+  const meta   = await rideQuery.countTotal();
 
   return { meta, result };
 };
 
-
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface EstimateRideOptionsProps {
   distanceKm: number;
@@ -110,7 +197,7 @@ const estimateRideOptions = async ({
   country,
 }: EstimateRideOptionsProps) => {
   if (!distanceKm || isNaN(Number(distanceKm))) {
-    throw new Error("Invalid distanceKm value");
+    throw new Error('Invalid distanceKm value');
   }
 
   distanceKm = Number(distanceKm);
@@ -133,70 +220,50 @@ const estimateRideOptions = async ({
       minimumFare: number;
     };
   }[] = [
-    {
-      vehicleType: 'MINO_GO',
-      pricing: fare.minoGo,
-    },
-    {
-      vehicleType: 'MINO_COMFORT',
-      pricing: fare.minoGo, // same as GO
-    },
-    {
-      vehicleType: 'MINO_XL',
-      pricing: fare.minoXL,
-    },
-    {
-      vehicleType: 'MINO_MOTO',
-      pricing: fare.minoMoto,
-    },
+    { vehicleType: 'MINO_GO',      pricing: fare.minoGo   },
+    { vehicleType: 'MINO_COMFORT', pricing: fare.minoGo   }, // same as GO
+    { vehicleType: 'MINO_XL',      pricing: fare.minoXL   },
+    { vehicleType: 'MINO_MOTO',    pricing: fare.minoMoto },
   ];
 
   return vehicleConfigs.map(({ vehicleType, pricing }) => {
-    // Base fare calculation
     let estimatedFare =
-      pricing.baseFee +
-      pricing.bookingFee +
-      pricing.ratePerKm * distanceKm;
+      pricing.baseFee + pricing.bookingFee + pricing.ratePerKm * distanceKm;
 
     if (estimatedFare < pricing.minimumFare) {
       estimatedFare = pricing.minimumFare;
     }
 
-    // Add surcharge if enabled
     let totalFare = estimatedFare;
     if (fare.surcharge?.enabled) {
       totalFare += fare.surcharge.value;
     }
 
-    // Waiting charge calculation
     if (fare.waitingCharge?.enabled) {
-      // For simplicity, assume user waits full gracePeriod minutes
       totalFare += fare.waitingCharge.rate * fare.waitingCharge.gracePeriod;
     }
 
-    // Admin commission
     const adminCommission = (totalFare * fare.platformCommissionPercentage) / 100;
-    const driverEarning = totalFare - adminCommission;
+    const driverEarning   = totalFare - adminCommission;
 
-    // Estimated arrival time
-    const speed = AVERAGE_SPEED_KMH[vehicleType] || 40; // fallback speed
+    const speed            = AVERAGE_SPEED_KMH[vehicleType] || 40;
     const estimatedTimeMin = Math.ceil((distanceKm / speed) * 60);
 
     return {
       vehicleType,
-      estimatedFare: Math.round(estimatedFare),
-      totalFare: Math.round(totalFare),
-      driverEarning: Math.round(driverEarning),
-      adminCommission: Math.round(adminCommission),
+      estimatedFare:          Math.round(estimatedFare),
+      totalFare:              Math.round(totalFare),
+      driverEarning:          Math.round(driverEarning),
+      adminCommission:        Math.round(adminCommission),
       estimatedArrivalTimeMin: estimatedTimeMin,
-      isAvailable: true,
+      isAvailable:            true,
     };
   });
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 
 const applyPromoToRide = async (rideId: string, promoCode: string) => {
-  // 1️⃣ Find the ride
   const ride = await Ride.findById(rideId);
   if (!ride) throw new Error('Ride not found');
 
@@ -204,7 +271,6 @@ const applyPromoToRide = async (rideId: string, promoCode: string) => {
     throw new Error('Ride totalFare is not set yet');
   }
 
-  // 2️⃣ Find valid promo
   const promo = await Promo.findOne({
     title: promoCode,
     status: 'ACTIVE',
@@ -214,63 +280,68 @@ const applyPromoToRide = async (rideId: string, promoCode: string) => {
 
   if (!promo) throw new Error('Invalid or expired promo code');
 
-  // 3️⃣ Check minimum spend
   if (ride.totalFare < promo.minimumSpend) {
-    throw new Error(`Ride must cost at least ${promo.minimumSpend} to use this promo`);
+    throw new Error(
+      `Ride must cost at least ${promo.minimumSpend} to use this promo`,
+    );
   }
 
-  // 4️⃣ Get fare configuration for this ride
-  const fare = await Fare.findOne({
-    country: ride.country,
-    isActive: true,
-  });
-
+  const fare = await Fare.findOne({ country: ride.country, isActive: true });
   if (!fare) throw new Error('Fare configuration not found for this country');
 
   const platformCommissionPercent = fare.platformCommissionPercentage || 0;
-
-  // 5️⃣ Calculate discount safely
   const discount = Math.min(promo.discount, ride.totalFare);
 
-  // 6️⃣ Apply promo
-  ride.promo = promo._id;
-  ride.promoDiscount = discount;
-  ride.totalFare = ride.totalFare - discount;
-
-  // 7️⃣ Update driver/admin earnings dynamically
+  ride.promo           = promo._id;
+  ride.promoDiscount   = discount;
+  ride.totalFare       = ride.totalFare - discount;
   ride.adminCommission = (ride.totalFare * platformCommissionPercent) / 100;
-  ride.driverEarning = ride.totalFare - ride.adminCommission;
+  ride.driverEarning   = ride.totalFare - ride.adminCommission;
 
-  // 8️⃣ Save ride
   await ride.save();
 
-  // 9️⃣ Return ride info for UI
-  return {
-    rideId: ride._id,
-    estimatedFare: ride.estimatedFare,
-    totalFare: ride.totalFare,
-    promoDiscount: ride.promoDiscount,
-    driverEarning: ride.driverEarning,
+  const result = {
+    rideId:          ride._id,
+    estimatedFare:   ride.estimatedFare,
+    totalFare:       ride.totalFare,
+    promoDiscount:   ride.promoDiscount,
+    driverEarning:   ride.driverEarning,
     adminCommission: ride.adminCommission,
-    promoApplied: promo.title,
+    promoApplied:    promo.title,
   };
+
+  // Emit: confirm applied promo to passenger
+  try {
+    if (isManagerReady()) {
+      emitToPassenger(ride.passenger.toString(), SocketEvents.PROMO_APPLIED, {
+        rideId:          ride._id.toString(),
+        promoCode:       promo.title,
+        promoDiscount:   ride.promoDiscount,
+        totalFare:       ride.totalFare,
+        driverEarning:   ride.driverEarning,
+        adminCommission: ride.adminCommission,
+      });
+    }
+  } catch (err) {
+    logger.warn('applyPromoToRide: socket emission failed (non-critical):', err);
+  }
+
+  return result;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const cancelRide = async (
   rideId: string,
   cancelledBy: 'PASSENGER' | 'DRIVER' | 'SYSTEM',
   reason: string,
-  details?: string
+  details?: string,
 ) => {
   const ride = await Ride.findById(rideId);
   if (!ride) throw new Error('Ride not found');
 
-  // Initialize cancellations array if undefined
-  if (!ride.cancellations) {
-    ride.cancellations = [];
-  }
+  if (!ride.cancellations) ride.cancellations = [];
 
-  // Add cancellation record
   const cancellation: ICancellation = {
     cancelledBy,
     reason,
@@ -279,60 +350,78 @@ const cancelRide = async (
   };
   ride.cancellations.push(cancellation);
 
-  // Update ride status
+  if (!ride.statusHistory) ride.statusHistory = [];
+  ride.statusHistory.push({ status: 'CANCELLED', changedAt: new Date() });
+
   ride.status = 'CANCELLED';
 
   await ride.save();
-  return ride;
 
+  // Emit: notify all parties about the cancellation
+  try {
+    if (isManagerReady()) {
+      const cancelPayload = {
+        rideId: ride._id.toString(),
+        cancelledBy,
+        reason,
+        details,
+      };
+      emitToRideRoom(rideId, SocketEvents.RIDE_CANCELLED, cancelPayload);
+      emitToPassenger(ride.passenger.toString(), SocketEvents.RIDE_CANCELLED, cancelPayload);
+
+      if (ride.driver) {
+        emitToDriver(ride.driver.toString(), SocketEvents.RIDE_CANCELLED, cancelPayload);
+        setDriverOnRide(ride.driver.toString(), false);
+      }
+    }
+  } catch (err) {
+    logger.warn('cancelRide: socket emission failed (non-critical):', err);
+  }
+
+  return ride;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 
 const adminGetAllRides = async (query: Record<string, unknown>) => {
   const rideQuery = new QueryBuilder(
-    Ride.find({ isDeleted: false })
-      .populate('passenger')
-      .populate('driver'),
-    query
+    Ride.find({ isDeleted: false }).populate('passenger').populate('driver'),
+    query,
   )
     .search(['status', 'serviceType'])
     .filter()
     .paginate();
 
   const result = await rideQuery.modelQuery;
-  const meta = await rideQuery.countTotal();
+  const meta   = await rideQuery.countTotal();
 
   return { meta, result };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 
 const getNearestRides = async ({
-    driverLocation,
-    maxDistanceMeters = 5000, // default 5km radius
-    now = new Date(),
-  }: NearestRidesProps) => {
-    // Find rides that are:
-    // 1. Not assigned to any driver
-    // 2. Status is REQUESTED
-    // 3. Either immediate or scheduled in the future
-    return await Ride.find({
-      driver: null,
-      status: 'REQUESTED',
-      $or: [
-      { scheduledAt: { $exists: false } }, // immediate rides
-      { scheduledAt: { $gte: now } }       // future scheduled rides
-      ],
-      'pickupLocation.location': {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: driverLocation,
-          },
-          $maxDistance: maxDistanceMeters,
-        },
+  driverLocation,
+  maxDistanceMeters = 5_000,
+  now = new Date(),
+}: NearestRidesProps) => {
+  return await Ride.find({
+    driver: null,
+    status: 'REQUESTED',
+    $or: [
+      { scheduledAt: { $exists: false } },
+      { scheduledAt: { $gte: now } },
+    ],
+    'pickupLocation.location': {
+      $near: {
+        $geometry: { type: 'Point', coordinates: driverLocation },
+        $maxDistance: maxDistanceMeters,
       },
-    }).limit(20); // optional: limit number of rides for performance
-  }
+    },
+  }).limit(20);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const RideService = {
   createRide,
@@ -344,5 +433,5 @@ export const RideService = {
   applyPromoToRide,
   cancelRide,
   adminGetAllRides,
-  getNearestRides
+  getNearestRides,
 };

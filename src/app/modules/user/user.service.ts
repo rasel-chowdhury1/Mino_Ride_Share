@@ -130,7 +130,7 @@ const otpVerifyAndCreateUser = async ({
               throw new AppError(httpStatus.BAD_REQUEST, "You are not authorised");
             }
 
-           const { name, email, password, role, countryCode, phoneNumber, gender, dateOfBirth, acceptTerms, vehicleType, homeAddress} = decodeData;
+           const { name, email, password, role, countryCode, phoneNumber, gender, dateOfBirth, acceptTerms, driverType, homeAddress} = decodeData;
 
           
             console.log("decodeData ===>>>>> ", decodeData);
@@ -184,7 +184,7 @@ const otpVerifyAndCreateUser = async ({
                     dateOfBirth, 
                     homeAddress,
                     acceptTerms, 
-                    vehicleType,
+                    driverType,
                     adminVerified: role !== USER_ROLE.DRIVER ? "verified" : "pending"
                   },
                 ],

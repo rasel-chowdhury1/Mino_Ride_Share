@@ -8,6 +8,7 @@ import { FareRoutes } from "../modules/fare/fare.route";
 import { PromoRoutes } from "../modules/promo/promo.route";
 import { FeedbackRoutes } from "../modules/feedback/feedback.route";
 import { RideRoutes } from "../modules/ride/ride.route";
+import { DriverRoutes } from "../modules/driver/driver.route";
 
 const router = Router();
 
@@ -15,6 +16,10 @@ const moduleRoutes = [
   {
     path: '/users',
     route: userRoutes,
+  },
+  {
+    path: '/drivers',
+    route: DriverRoutes,
   },
   {
     path: '/auth',

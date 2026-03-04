@@ -47,6 +47,17 @@ export interface NearestRidesProps {
   now?: Date;                       // current timestamp
 }
 
+export type TItemType = 'DOCUMENT' | 'SMALL_PARCEL' | 'FOOD_ITEM';
+export interface IParcelDetails {
+  itemType: TItemType;
+  approxWeightKg: number;
+  isFragile: boolean;
+  notes?: string;
+  instructions?: string;
+  receiverName: string;
+  receiverPhone: string;
+}
+
 export interface IRide {
   country: string;
 
@@ -74,12 +85,13 @@ export interface IRide {
   // promo
   promo?: Types.ObjectId;
   promoDiscount?: number;
-  // Parcel only
-  receiverName?: string;
-  receiverPhone?: string;
+  
+  pickupType: 'INSTANT' | 'SCHEDULED';
 
-  scheduledAt?: Date;
-  driverAcceptedAt?: Date;
+  parcelDetails?: IParcelDetails;     
+
+  scheduledAt: Date | null;
+  driverAcceptedAt: Date | null;
   cancelledBy?: 'PASSENGER' | 'DRIVER' | 'SYSTEM';
   reason?: string;
   cancellations?: ICancellation[];
