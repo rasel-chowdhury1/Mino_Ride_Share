@@ -24,7 +24,7 @@ const FALLBACK_PICKUP_DISTANCE_KM = 2;
 /**
  * Haversine formula — calculates the distance in km between two lat/lng points
  */
-const getDistanceKm = (
+export const getDistanceKm = (
   lat1: number,
   lng1: number,
   lat2: number,

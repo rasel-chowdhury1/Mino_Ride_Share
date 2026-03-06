@@ -36,7 +36,7 @@ const createUserToken = async (payload: TUserCreate) => {
   
 
   
-  const { name, email, password, role, countryCode, phoneNumber, gender, dateOfBirth, acceptTerms, driverType, homeAddress,} = payload;
+  const { name, email, password, role, countryCode, phoneNumber, gender, dateOfBirth, acceptTerms, driverType, homeAddress, travel} = payload;
 
   
   // user exist check

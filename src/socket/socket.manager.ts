@@ -8,7 +8,8 @@
 import { Server as SocketIOServer } from 'socket.io';
 import { Driver } from '../app/modules/driver/driver.model';
 import { logger } from '../app/utils/logger';
-import { IOnlineDriverEntry, IOnlineUserEntry, SocketEvents } from './socket.types';
+import { getDistanceKm } from '../app/modules/ride/ride.utils';
+import { IOnlineDriverEntry, IOnlineUserEntry, RideRequestedPayload, SocketEvents } from './socket.types';
 
 // ─── Module-level state ───────────────────────────────────────────────────────
 
@@ -172,6 +173,10 @@ export function emitToDriver(driverProfileId: string, event: string, data: unkno
 
   const room = driverRoom(driverProfileId);
 
+  console.log("room =>>>> ", room);
+  console.log("hasRoomSockets =>>>> ", hasRoomSockets(room));
+  console.log("driver event =>>>> ", event);
+
   if (hasRoomSockets(room)) {
     _io.to(room).emit(event, data);
     return true;
@@ -211,7 +216,7 @@ export async function broadcastToNearbyDrivers(
 
   const onlineIds = getOnlineDriverProfileIds();
 
-  console.log("onlineIds", onlineIds);
+  console.log("onlineIds ==>>>> ", onlineIds);
   if (onlineIds.length === 0) {
     logger.info('broadcastToNearbyDrivers: no online drivers in registry');
     return [];
@@ -247,4 +252,81 @@ export async function broadcastToNearbyDrivers(
 /** Pushes the current online-user snapshot to all connected sockets. */
 export function broadcastOnlineUsers(): void {
   _io?.emit(SocketEvents.ONLINE_USERS, getOnlineUsersSnapshot());
+}
+
+// ─── Vehicle speed lookup (km/h) for ETA calculation ─────────────────────────
+
+const VEHICLE_SPEED_KMH: Record<string, number> = {
+  MINO_GO:      40,
+  MINO_COMFORT: 40,
+  MINO_XL:      35,
+  MINO_MOTO:    45,
+};
+
+/**
+ * Broadcasts a ride_requested event to nearby online, available drivers.
+ * Each driver receives a personalised payload that includes:
+ *  - passenger name, profileImage, averageRating
+ *  - distance (km) from the driver's current location to the pickup point
+ *  - estimated arrival time (min) based on the driver's vehicle type
+ *
+ * @param pickupCoordinates [longitude, latitude]
+ * @param basePayload       All ride fields except the per-driver distance/ETA
+ * @param maxDistanceMeters Default 5 km
+ * @returns Array of notified driverProfileIds
+ */
+export async function broadcastRideRequestToNearbyDrivers(
+  pickupCoordinates: [number, number],
+  basePayload: Omit<RideRequestedPayload, 'distanceToPickupKm' | 'estimatedArrivalMin'>,
+  maxDistanceMeters = 5_000,
+): Promise<string[]> {
+  if (!_io) return [];
+
+  const onlineIds = getOnlineDriverProfileIds();
+  if (onlineIds.length === 0) {
+    logger.info('broadcastRideRequestToNearbyDrivers: no online drivers');
+    return [];
+  }
+
+  const nearbyDrivers = await Driver.find({
+    _id: { $in: onlineIds },
+    isOnline: true,
+    isOnRide: false,
+    approvalStatus: 'verified',
+  }).select('_id vehicleType').lean();
+
+  const [pickupLng, pickupLat] = pickupCoordinates;
+
+  const notified: string[] = [];
+  for (const driver of nearbyDrivers) {
+    const driverProfileId = driver._id.toString();
+    const entry = onlineDrivers.get(driverProfileId);
+
+    // Calculate per-driver distance and ETA
+    let distanceToPickupKm = 2; // fallback when driver location is unknown
+    if (entry?.location) {
+      const [driverLng, driverLat] = entry.location;
+      distanceToPickupKm = parseFloat(
+        getDistanceKm(pickupLat, pickupLng, driverLat, driverLng).toFixed(2),
+      );
+    }
+
+    const speed = VEHICLE_SPEED_KMH[driver.vehicleType as string] ?? 40;
+    const estimatedArrivalMin = Math.ceil((distanceToPickupKm / speed) * 60);
+
+    const payload: RideRequestedPayload = {
+      ...basePayload,
+      distanceToPickupKm,
+      estimatedArrivalMin,
+    };
+
+    if (emitToDriver(driverProfileId, SocketEvents.RIDE_REQUESTED, payload)) {
+      notified.push(driverProfileId);
+    }
+  }
+
+  logger.info(
+    `broadcastRideRequestToNearbyDrivers: notified ${notified.length}/${nearbyDrivers.length} drivers`,
+  );
+  return notified;
 }

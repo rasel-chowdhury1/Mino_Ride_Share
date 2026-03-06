@@ -125,6 +125,8 @@ export interface RideRequestedPayload {
   rideId: string;
   passengerId: string;
   passengerName: string;
+  passengerProfileImage: string;
+  passengerAverageRating: number;
   vehicleCategory: string;
   serviceType: string;
   pickupLocation: { address: string; coordinates: [number, number] };
@@ -133,12 +135,23 @@ export interface RideRequestedPayload {
   totalFare: number | undefined;
   distanceKm: number | unknown;
   scheduledAt?: Date | null;
+  distanceToPickupKm: number;   // driver current location → pickup
+  estimatedArrivalMin: number;  // based on driver vehicle type speed
 }
 
 export interface RideAcceptedPayload {
   rideId: string;
   driverProfileId: string;
   driverName: string;
+  driverProfileImage: string;
+  driverAverageRating: number;
+  driverPhoneNumber: string;
+  driverCountryCode: string;
+  vehicleBrand: string;
+  vehicleModel: string;
+  licenseNumber: string;
+  driverCurrentLocation: { lat: number; lng: number }; // initial pin on map
+  estimatedArrivalMin: number;
   acceptedAt: Date;
 }
 

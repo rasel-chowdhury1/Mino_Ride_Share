@@ -327,6 +327,8 @@ export function registerSocketEvents(socket: Socket, _io: SocketIOServer): void 
    * Sets driver offline in DB and removes from in-memory registry.
    */
   socket.on(SocketEvents.DRIVER_GO_OFFLINE, async (ackFn?: AckFn) => {
+
+    console.log("ackFn =>>> ", ackFn);
     try {
       if (role !== 'driver' || !driverProfileId) {
         return sendAck(ackFn, { success: false, error: 'Only drivers can use this event', code: 403 });
@@ -341,6 +343,7 @@ export function registerSocketEvents(socket: Socket, _io: SocketIOServer): void 
         data: { isOnline: false },
       });
 
+      console.log("offline emit =>>>> ",sendAck(ackFn, { success: true, data: { isOnline: false } }));
       sendAck(ackFn, { success: true, data: { isOnline: false } });
       logger.info(`[DRIVER OFFLINE] userId=${userId}`);
     } catch (err: any) {

@@ -5,12 +5,16 @@ import { Fare } from '../fare/fare.model';
 import { Promo } from '../promo/promo.model';
 import {
   isManagerReady,
-  broadcastToNearbyDrivers,
+  broadcastRideRequestToNearbyDrivers,
+  getOnlineDriverEntry,
   emitToPassenger,
   emitToDriver,
   emitToRideRoom,
   setDriverOnRide,
 } from '../../../socket/socket.manager';
+import { User } from '../user/user.model';
+import { Driver } from '../driver/driver.model';
+import { getDistanceKm } from './ride.utils';
 import { SocketEvents } from '../../../socket/socket.types';
 import { logger } from '../../utils/logger';
 import {
@@ -40,15 +44,18 @@ const createRide = async (payload: IRide) => {
   // Emit: notify nearby online drivers about the new ride request
   try {
     if (isManagerReady()) {
+      const passenger = await User.findById(ride.passenger).select('name profileImage averageRating').lean();
 
-      await broadcastToNearbyDrivers(
+      await broadcastRideRequestToNearbyDrivers(
         ride.pickupLocation.location.coordinates,
-        SocketEvents.RIDE_REQUESTED,
         {
-          rideId:          ride._id.toString(),
-          passengerId:     ride.passenger.toString(),
-          vehicleCategory: ride.vehicleCategory,
-          serviceType:     ride.serviceType,
+          rideId:                  ride._id.toString(),
+          passengerId:             ride.passenger.toString(),
+          passengerName:           passenger?.name ?? '',
+          passengerProfileImage:   passenger?.profileImage ?? '',
+          passengerAverageRating:  passenger?.averageRating ?? 0,
+          vehicleCategory:         ride.vehicleCategory,
+          serviceType:             ride.serviceType,
           pickupLocation: {
             address:     ride.pickupLocation.address,
             coordinates: ride.pickupLocation.location.coordinates,
@@ -86,14 +93,47 @@ const driverAcceptRide = async (rideId: string, driverId: string) => {
 
   const saved = await ride.save();
 
-  // Emit: tell the passenger their ride was accepted
+  // Emit: tell the passenger their ride was accepted (with enriched driver info)
   try {
     if (isManagerReady()) {
+      // Fetch driver profile + linked user in parallel
+      const driverDoc = await Driver.findById(driverId)
+        .select('userId vehicleBrand vehicleModel licenseNumber vehicleType currentLocation')
+        .lean();
+
+      const userDoc = driverDoc
+        ? await User.findById(driverDoc.userId)
+            .select('name profileImage averageRating phoneNumber countryCode')
+            .lean()
+        : null;
+
+      // Distance from driver's current location to pickup
+      const driverEntry = getOnlineDriverEntry(driverId);
+      const driverCoords: [number, number] =
+        driverEntry?.location ?? driverDoc?.currentLocation?.coordinates ?? [0, 0];
+
+      const [pickupLng, pickupLat] = saved.pickupLocation.location.coordinates;
+      const [driverLng, driverLat] = driverCoords;
+      const distanceToPickupKm = getDistanceKm(pickupLat, pickupLng, driverLat, driverLng);
+      const speed = AVERAGE_SPEED_KMH[driverDoc?.vehicleType as TVehicleType] ?? 40;
+      const estimatedArrivalMin = Math.ceil((distanceToPickupKm / speed) * 60);
+
       const payload = {
-        rideId:          saved._id.toString(),
-        driverProfileId: driverId,
-        acceptedAt:      saved.driverAcceptedAt,
+        rideId:               saved._id.toString(),
+        driverProfileId:      driverId,
+        driverName:           userDoc?.name           ?? '',
+        driverProfileImage:   userDoc?.profileImage   ?? '',
+        driverAverageRating:  userDoc?.averageRating  ?? 0,
+        driverPhoneNumber:    userDoc?.phoneNumber     ?? '',
+        driverCountryCode:    userDoc?.countryCode     ?? '',
+        vehicleBrand:         driverDoc?.vehicleBrand  ?? '',
+        vehicleModel:         driverDoc?.vehicleModel  ?? '',
+        licenseNumber:        driverDoc?.licenseNumber ?? '',
+        driverCurrentLocation: { lat: driverLat, lng: driverLng },
+        estimatedArrivalMin,
+        acceptedAt:           saved.driverAcceptedAt,
       };
+
       emitToPassenger(saved.passenger.toString(), SocketEvents.RIDE_ACCEPTED, payload);
       emitToRideRoom(rideId, SocketEvents.RIDE_ACCEPTED, payload);
     }
