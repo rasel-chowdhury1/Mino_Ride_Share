@@ -70,6 +70,7 @@ const updateMyProfile = catchAsync(async (req: Request, res: Response) => {
     message: 'Profile updated successfully',
     data: result,
   });
+  
 });
 
 const createSuperAdmin = catchAsync(

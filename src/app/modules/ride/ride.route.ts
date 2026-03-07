@@ -49,6 +49,12 @@ router.post(
   RideController.getNearestRides
 )
 
+.get(
+  "/recent",
+  auth(USER_ROLE.PASSENGER, USER_ROLE.DRIVER),
+  RideController.getRecentRides
+)
+
 .patch(
   '/:id/status',
   auth(USER_ROLE.DRIVER),

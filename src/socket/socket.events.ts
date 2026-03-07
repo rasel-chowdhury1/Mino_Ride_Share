@@ -326,7 +326,7 @@ export function registerSocketEvents(socket: Socket, _io: SocketIOServer): void 
    * driver:goOffline
    * Sets driver offline in DB and removes from in-memory registry.
    */
-  socket.on(SocketEvents.DRIVER_GO_OFFLINE, async (ackFn?: AckFn) => {
+  socket.on(SocketEvents.DRIVER_GO_OFFLINE, async (payload: {}, ackFn?: AckFn) => {
 
     console.log("ackFn =>>> ", ackFn);
     try {

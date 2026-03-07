@@ -107,12 +107,14 @@ const userSchema = new Schema<TUserCreate>(
 
     homeAddress: {
       type: addressSchema,
-      required: false
+      required: false,
+      default: {}
     },
 
     workAddress: {
       type: addressSchema,
-      required: false
+      required: false,
+      default: {}
     },
 
     adminVerified: {

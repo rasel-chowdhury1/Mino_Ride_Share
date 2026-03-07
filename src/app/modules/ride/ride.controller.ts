@@ -154,6 +154,29 @@ const getNearestRides = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const getRecentRides = catchAsync(async (req: Request, res: Response) => {
+  const { userId, role } = req.user;
+
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+
+  const data = await RideService.getRecentRides(
+    userId,
+    (role as 'passenger' | 'driver') ?? 'passenger',
+    req.query as Record<string, unknown>,
+  );
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Recent rides fetched successfully',
+    data: data.result,
+    meta: data.meta,
+  });
+});
+
+
 export const RideController = {
   createRide,
   getMotorcycleEstimates,
@@ -163,5 +186,6 @@ export const RideController = {
   driverAcceptRide,
   updateRideStatus,
   adminGetAllRides,
-  getNearestRides
+  getNearestRides,
+  getRecentRides
 };

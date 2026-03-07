@@ -15,6 +15,9 @@ import { otpSendEmail } from '../../utils/emailNotification';
 // Login
 const login = async (payload: TLogin) => {
   const user = await User.isUserActive(payload?.email);
+
+
+  
   
   
   if (!user) {
@@ -56,8 +59,16 @@ const login = async (payload: TLogin) => {
     expity_time: config.jwt_refresh_expires_in as string,
   });
 
+
+    // ✅ Normalize missing address fields to empty objects
+  const userResponse = {
+    ...user.toObject(),
+    homeAddress: user.homeAddress ?? {},
+    workAddress: user.workAddress ?? {},
+  };
+
   return {
-    user,
+    user: userResponse,
     accessToken,
     refreshToken,
   };

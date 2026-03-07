@@ -3,6 +3,8 @@
 // Central type registry for all Socket.IO payloads, events, and entities.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { IParcelDetails } from "../app/modules/ride/ride.interface";
+
 // ─── Authenticated socket user ────────────────────────────────────────────────
 
 export interface ISocketUser {
@@ -137,6 +139,10 @@ export interface RideRequestedPayload {
   scheduledAt?: Date | null;
   distanceToPickupKm: number;   // driver current location → pickup
   estimatedArrivalMin: number;  // based on driver vehicle type speed
+  pickupType: string;
+  paymentMethod: string;
+  parcelDetails?: IParcelDetails;
+
 }
 
 export interface RideAcceptedPayload {

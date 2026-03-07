@@ -68,6 +68,9 @@ const createRide = async (payload: IRide) => {
           totalFare:     ride.totalFare,
           distanceKm:    ride.distanceKm,
           scheduledAt:   ride.scheduledAt,
+          pickupType:    ride.pickupType,
+          parcelDetails: ride.parcelDetails,
+          paymentMethod: payload.paymentMethod,
         },
       );
     }
@@ -134,6 +137,14 @@ const driverAcceptRide = async (rideId: string, driverId: string) => {
         acceptedAt:           saved.driverAcceptedAt,
       };
 
+      const statusPayload = {
+        rideId:    saved._id.toString(),
+        status: "ACCEPTED",
+        changedAt: new Date(),
+      };
+
+      emitToRideRoom(rideId, SocketEvents.RIDE_STATUS_UPDATED, statusPayload);
+
       emitToPassenger(saved.passenger.toString(), SocketEvents.RIDE_ACCEPTED, payload);
       emitToRideRoom(rideId, SocketEvents.RIDE_ACCEPTED, payload);
     }
@@ -167,6 +178,7 @@ const updateRideStatus = async (
         status,
         changedAt: new Date(),
       };
+
       emitToRideRoom(rideId, SocketEvents.RIDE_STATUS_UPDATED, statusPayload);
 
       if (status === 'ONGOING') {
@@ -461,6 +473,29 @@ const getNearestRides = async ({
   }).limit(20);
 };
 
+
+const getRecentRides = async (userId: string, role: 'passenger' | 'driver', query: Record<string, unknown>) => {
+  const filter =
+    role === 'driver'
+      ? { driver: userId, isDeleted: false }
+      : { passenger: userId, isDeleted: false };
+
+  const rideQuery = new QueryBuilder(
+     Ride.find(filter).select(
+      'pickupLocation dropoffLocation status distanceKm durationMin createdAt scheduledAt pickupType'
+    ),
+    query,
+  )
+    .search(['status', 'serviceType'])
+    .filter()
+    .paginate();
+
+  const result = await rideQuery.modelQuery;
+  const meta   = await rideQuery.countTotal();
+
+  return { meta, result };
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const RideService = {
@@ -474,4 +509,5 @@ export const RideService = {
   cancelRide,
   adminGetAllRides,
   getNearestRides,
+  getRecentRides
 };
