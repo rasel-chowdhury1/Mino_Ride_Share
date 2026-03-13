@@ -59,6 +59,8 @@ userRoutes
 
   .get('/all-users', auth("admin"), userController.getAllUsers)
 
+  .get('/all-passengers', auth(USER_ROLE.ADMIN), userController.getAllPassengers)
+
   .get(
     "/super_admins",
     auth(USER_ROLE.ADMIN),
@@ -92,6 +94,24 @@ userRoutes
     '/block/:id',
     auth('admin'),
     userController.blockedUser,
+  )
+
+  .patch(
+    '/warn/:id',
+    auth(USER_ROLE.ADMIN),
+    userController.warnUser,
+  )
+
+  .patch(
+    '/ban/:id',
+    auth(USER_ROLE.ADMIN),
+    userController.banUser,
+  )
+
+  .patch(
+    '/unban/:id',
+    auth(USER_ROLE.ADMIN),
+    userController.unbanUser,
   )
   
   .delete(

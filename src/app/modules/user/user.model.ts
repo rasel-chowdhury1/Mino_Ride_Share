@@ -165,10 +165,25 @@ const userSchema = new Schema<TUserCreate>(
 
     status: {
       type: String,
-      enum: ['active', 'blocked'],
+      enum: ['active', 'blocked', 'banned'],
       required: true,
       default: 'active',
     },
+
+    warnings: {
+      count: { type: Number, default: 0 },
+      logs: [
+        {
+          reason:    { type: String, required: true },
+          warnedAt:  { type: Date, default: Date.now },
+          warnedBy:  { type: Schema.Types.ObjectId, ref: 'User' },
+        },
+      ],
+    },
+
+    banReason: { type: String, default: null },
+    bannedAt:  { type: Date, default: null },
+    bannedBy:  { type: Schema.Types.ObjectId, ref: 'User', default: null },
 
     isDeleted: {
       type: Boolean,

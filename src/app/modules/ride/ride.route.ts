@@ -36,11 +36,23 @@ router.post(
   RideController.getPassengerRides
 )
 
+.get(
+  '/byStatus/:status',
+  auth(USER_ROLE.PASSENGER, USER_ROLE.DRIVER),
+  RideController.getRidesByStatus
+)
+
 /** Driver */
 .get(
-    '/driver', 
-    auth(USER_ROLE.DRIVER), 
+    '/driver',
+    auth(USER_ROLE.DRIVER),
     RideController.getDriverRides
+)
+
+.get(
+  '/driver/:status',
+  auth(USER_ROLE.DRIVER),
+  RideController.getRidesByStatus
 )
 
 .get(
@@ -55,11 +67,38 @@ router.post(
   RideController.getRecentRides
 )
 
+
+.post(
+  '/review/:rideId',
+  auth(USER_ROLE.PASSENGER, USER_ROLE.DRIVER),
+  RideController.submitRideReview
+)
+
 .patch(
-  '/:id/status',
+  '/end/:rideId',
+  auth(USER_ROLE.DRIVER),
+  RideController.endRide
+)
+
+.patch(
+  '/confirm-dropoff/:rideId',
+  auth(USER_ROLE.DRIVER),
+  RideController.confirmDropoff
+)
+
+.patch(
+  '/pay/:rideId',
+  auth(USER_ROLE.PASSENGER),
+  RideController.payRide
+)
+
+.patch(
+  '/status/:id',
   auth(USER_ROLE.DRIVER),
   RideController.updateRideStatus
 )
+
+
 
 /** Admin */
 .get(

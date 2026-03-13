@@ -12,6 +12,10 @@ const aws = {
 const stripe = {
   stripe_api_key: process.env.STRIPE_API_KEY,
   stripe_api_secret: process.env.STRIPE_API_SECRET,
+  stripe_webhook_secret: process.env.STRIPE_WEBHOOK_SECRET,
+  stripe_currency: process.env.STRIPE_CURRENCY || 'usd',
+  stripe_success_url: process.env.STRIPE_SUCCESS_URL || 'http://localhost:3000/payment/success',
+  stripe_cancel_url:  process.env.STRIPE_CANCEL_URL  || 'http://localhost:3000/payment/cancel',
 };
 
 

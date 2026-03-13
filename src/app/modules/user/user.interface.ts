@@ -44,6 +44,7 @@ export interface TUserCreate {
   isDriverProfileCompleted: boolean;
 
   status: TUserStatus;
+  warnings?: {};
   isDeleted: boolean;
   acceptTerms: boolean;
   fcmToken?: string;

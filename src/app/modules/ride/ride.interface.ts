@@ -6,7 +6,9 @@ export type TRideStatus =
   | 'ACCEPTED'
   | 'ARRIVED_PICKUP'
   | 'ONGOING'
+  | 'END_RIDE'
   | 'ARRIVED_DROPOFF'
+  | 'CONFIRM_DROPOFF'
   | 'COMPLETED'
   | 'CANCELLED';
 
@@ -47,6 +49,12 @@ export interface NearestRidesProps {
   now?: Date;                       // current timestamp
 }
 
+export interface IReviewEntry {
+  rating:   number;   // 1–5
+  comment?: string;
+  givenAt:  Date;
+}
+
 export type TItemType = 'DOCUMENT' | 'SMALL_PARCEL' | 'FOOD_ITEM';
 export interface IParcelDetails {
   itemType: TItemType;
@@ -59,6 +67,7 @@ export interface IParcelDetails {
 }
 
 export interface IRide {
+  rideId?: string;
   country: string;
 
   passenger: Types.ObjectId;
@@ -68,6 +77,7 @@ export interface IRide {
   vehicleCategory: 'MINO_GO' | 'MINO_COMFORT' | 'MINO_XL' | 'MINO_MOTO' ;
   pickupLocation: ILocation;
   dropoffLocation: ILocation;
+  actualDropoffLocation?: ILocation;
 
   status: TRideStatus;
 
@@ -78,6 +88,7 @@ export interface IRide {
   durationMin: Number,
   estimatedFare: number;
   totalFare?: number;
+  tip?: number;
 
   driverEarning?: number;
   adminCommission?: number;
@@ -96,5 +107,12 @@ export interface IRide {
   reason?: string;
   cancellations?: ICancellation[];
   statusHistory?: IStatusHistory[];
+
+  // Embedded feedback
+  passengerReview?:    IReviewEntry;
+  driverReview?:       IReviewEntry;
+  isPassengerReviewed: boolean;
+  isDriverReviewed:    boolean;
+
   isDeleted: boolean;
 }

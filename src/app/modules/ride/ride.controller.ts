@@ -120,6 +120,27 @@ const getDriverRides = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const getRidesByStatus = catchAsync(async (req: Request, res: Response) => {
+  const { status } = req.params;
+  const role = req.user.role as 'passenger' | 'driver';
+  const id   = role === 'driver' ? req.user.driverProfileId : req.user.userId;
+
+  const result = await RideService.getRidesByStatus(
+    id,
+    role,
+    status as 'completed' | 'cancelled' | 'upcoming',
+    req.query,
+  );
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: `${role} ${status} rides retrieved`,
+    meta: result.meta,
+    data: result.result,
+  });
+});
+
 const adminGetAllRides = catchAsync(async (req: Request, res: Response) => {
   const result = await RideService.adminGetAllRides(req.query);
 
@@ -177,15 +198,91 @@ const getRecentRides = catchAsync(async (req: Request, res: Response) => {
 });
 
 
+const endRide = catchAsync(async (req: Request, res: Response) => {
+  const { driverProfileId } = req.user;
+  const { rideId } = req.params;
+  const { address, coordinates } = req.body; // { address: string, coordinates: [lng, lat] }
+
+  const dropoffLocation = {
+    address,
+    location: {
+      type: 'Point' as const,
+      coordinates: coordinates as [number, number],
+    },
+  };
+
+  const result = await RideService.endRide(rideId, driverProfileId, dropoffLocation);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Ride ended successfully',
+    data: result,
+  });
+});
+
+const confirmDropoff = catchAsync(async (req: Request, res: Response) => {
+  const { driverProfileId } = req.user;
+  const { rideId } = req.params;
+
+  const result = await RideService.confirmDropoff(rideId, driverProfileId);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Dropoff confirmed successfully',
+    data: result,
+  });
+});
+
+const payRide = catchAsync(async (req: Request, res: Response) => {
+  const { userId } = req.user;
+  const { rideId } = req.params;
+  const { tip } = req.body; // optional tip amount
+
+  const result = await RideService.payRide(rideId, userId, tip ?? 0);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Payment successful',
+    data: result,
+  });
+});
+
+const submitRideReview = catchAsync(async (req: Request, res: Response) => {
+  const { rideId } = req.params;
+  const { role }   = req.user;
+  const { rating, comment } = req.body;
+
+  const result = await RideService.submitRideReview(
+    rideId,
+    role as 'passenger' | 'driver',
+    { rating, comment },
+  );
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Review submitted successfully',
+    data: result,
+  });
+});
+
 export const RideController = {
   createRide,
   getMotorcycleEstimates,
   getRideEstimates,
   getPassengerRides,
   getDriverRides,
+  getRidesByStatus,
+  submitRideReview,
   driverAcceptRide,
   updateRideStatus,
+  endRide,
+  confirmDropoff,
+  payRide,
   adminGetAllRides,
   getNearestRides,
-  getRecentRides
+  getRecentRides,
 };

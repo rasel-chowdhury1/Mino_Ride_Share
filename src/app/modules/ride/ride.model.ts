@@ -1,6 +1,15 @@
 import { Schema, model } from 'mongoose';
 import { IRide } from './ride.interface';
 
+const ReviewEntrySchema = new Schema(
+  {
+    rating:  { type: Number, required: true, min: 1, max: 5 },
+    comment: { type: String, default: '' },
+    givenAt: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
 
 
 /*
@@ -68,6 +77,12 @@ LocationSchema.index({ location: '2dsphere' });
 
 const RideSchema = new Schema<IRide>(
   {
+    rideId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
     country: {
       type: String,
       required: true,
@@ -100,6 +115,7 @@ const RideSchema = new Schema<IRide>(
 
     pickupLocation: LocationSchema,
     dropoffLocation: LocationSchema,
+    actualDropoffLocation: { type: LocationSchema, default: null },
 
     status: {
       type: String,
@@ -108,7 +124,9 @@ const RideSchema = new Schema<IRide>(
         'ACCEPTED',
         'ARRIVED_PICKUP',
         'ONGOING',
+        'END_RIDE',
         'ARRIVED_DROPOFF',
+        'CONFIRM_DROPOFF',
         'COMPLETED',
         'CANCELLED',
       ],
@@ -169,6 +187,11 @@ const RideSchema = new Schema<IRide>(
       default: 0,
     },
 
+    tip: {
+      type: Number,
+      default: 0,
+    },
+
         // INSTANT = send now, SCHEDULED = send at a specific time
     pickupType: {
       type: String,
@@ -196,7 +219,7 @@ const RideSchema = new Schema<IRide>(
     statusHistory: {
       type: [
         {
-          status: { type: String, enum: ['REQUESTED','ACCEPTED','ARRIVED_PICKUP','ONGOING','ARRIVED_DROPOFF','COMPLETED','CANCELLED'] },
+          status: { type: String, enum: ['REQUESTED','ACCEPTED','ARRIVED_PICKUP','ONGOING','END_RIDE','ARRIVED_DROPOFF','CONFIRM_DROPOFF','COMPLETED','CANCELLED'] },
           changedAt: { type: Date, default: Date.now }
         }
       ],
@@ -224,6 +247,12 @@ const RideSchema = new Schema<IRide>(
     ],
     
 
+    // Embedded feedback — set when each party submits their review
+    passengerReview: { type: ReviewEntrySchema, default: null },
+    driverReview:    { type: ReviewEntrySchema, default: null },
+    isPassengerReviewed: { type: Boolean, default: false },
+    isDriverReviewed:    { type: Boolean, default: false },
+
     isDeleted: {
       type: Boolean,
       default: false,
@@ -231,5 +260,25 @@ const RideSchema = new Schema<IRide>(
   },
   { timestamps: true }
 );
+
+RideSchema.pre('save', async function (next) {
+  if (this.rideId) return next();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Model = this.constructor as any;
+  let unique = false;
+
+  while (!unique) {
+    const digits = Math.floor(1000 + Math.random() * 9000); // 4-digit: 1000–9999
+    const candidate = `#MN${digits}`;
+    const exists = await Model.exists({ rideId: candidate });
+    if (!exists) {
+      this.rideId = candidate;
+      unique = true;
+    }
+  }
+
+  next();
+});
 
 export const Ride = model<IRide>('Ride', RideSchema);

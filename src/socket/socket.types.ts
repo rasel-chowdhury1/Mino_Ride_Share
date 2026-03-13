@@ -47,6 +47,9 @@ export const SocketEvents = {
   UPDATE_LOCATION: 'driver:updateLocation',
   ACCEPT_RIDE: 'accept_ride',
   START_RIDE: 'start_ride',
+  END_RIDE: 'end_ride',
+  ARRIVED_DROPOFF: 'arrived_dropoff',
+  CONFIRM_DROPOFF: 'confirm_dropoff',
   COMPLETE_RIDE: 'complete_ride',
 
   // ── Room management ──────────────────────────────────────────────────────
@@ -57,6 +60,8 @@ export const SocketEvents = {
   RIDE_REQUESTED: 'ride_requested',
   RIDE_ACCEPTED: 'ride_accepted',
   RIDE_STARTED: 'ride_started',
+  RIDE_ENDED: 'ride_ended',
+  RIDE_CONFIRM_DROPOFF: 'ride_confirm_dropoff',
   RIDE_COMPLETED: 'ride_completed',
   RIDE_CANCELLED: 'ride_cancelled',
   RIDE_STATUS_UPDATED: 'ride_status_updated',
@@ -67,6 +72,10 @@ export const SocketEvents = {
   DRIVER_STATUS_UPDATED: 'driver:statusUpdated',
   DRIVER_LOCATION_ACK: 'driver:locationUpdated',
   DRIVER_ERROR: 'driver:error',
+
+  // ── Chat ─────────────────────────────────────────────────────────────────
+  SEND_MESSAGE:     'send_message',      // client → server
+  MESSAGE_RECEIVED: 'message_received',  // server → client
 
   // ── System / housekeeping ────────────────────────────────────────────────
   ONLINE_USERS: 'onlineUser',
@@ -181,6 +190,41 @@ export interface PromoAppliedPayload {
   totalFare: number;
   driverEarning: number | undefined;
   adminCommission: number | undefined;
+}
+
+export interface RideEndedPayload {
+  rideId: string;
+  actualDropoffLocation: { address: string; coordinates: [number, number] };
+  distanceKm: number | unknown;
+  durationMin: number;
+  estimatedFare: number;
+  totalFare: number;
+  driverEarning: number;
+  adminCommission: number;
+  changedAt: Date;
+}
+
+export interface ConfirmDropoffPayload {
+  rideId: string;
+  distanceKm: number | unknown;
+  durationMin: number | unknown;
+  estimatedFare: number;
+  totalFare: number;
+  driverEarning: number | undefined;
+  adminCommission: number | undefined;
+  promoDiscount: number | undefined;
+  paymentMethod: string;
+  changedAt: Date;
+}
+
+export interface RidePaidPayload {
+  rideId: string;
+  tip: number;
+  totalFare: number;
+  driverEarning: number;
+  adminCommission: number;
+  paymentStatus: string;
+  changedAt: Date;
 }
 
 export interface DriverLocationPayload {

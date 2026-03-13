@@ -113,6 +113,18 @@ const getAllUsers = catchAsync(async (req, res) => {
 
 
 
+const getAllPassengers = catchAsync(async (req: Request, res: Response) => {
+  const result = await userService.getAllPassengers(req.query);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    meta: result.meta,
+    data: result.result,
+    message: 'Passengers retrieved successfully',
+  });
+});
+
 const getMyProfile = catchAsync(async (req: Request, res: Response) => {
 
   const result = await userService.getMyProfile(req?.user?.userId);
@@ -180,7 +192,7 @@ const deleteMyAccount = catchAsync(async (req: Request, res: Response) => {
 });
 
 const deletedUserById = catchAsync(async (req: Request, res: Response) => {
-  
+
   const result = await userService.deletedUserById(req.params.id);
   sendResponse(res, {
     statusCode: httpStatus.OK,
@@ -189,6 +201,46 @@ const deletedUserById = catchAsync(async (req: Request, res: Response) => {
     data: result,
   });
 })
+
+const warnUser = catchAsync(async (req: Request, res: Response) => {
+  const adminId = req.user.userId;
+  const { id }  = req.params;
+  const { reason } = req.body;
+
+  const result = await userService.warnUser(id, adminId, reason);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'User warned successfully',
+    data: result,
+  });
+});
+
+const banUser = catchAsync(async (req: Request, res: Response) => {
+  const adminId = req.user.userId;
+  const { id }  = req.params;
+  const { reason } = req.body;
+
+  const result = await userService.banUser(id, adminId, reason);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'User banned successfully',
+    data: result,
+  });
+});
+
+const unbanUser = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const result = await userService.unbanUser(id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'User unbanned successfully',
+    data: result,
+  });
+});
 
 export const userController = {
   createUser,
@@ -200,6 +252,10 @@ export const userController = {
   blockedUser,
   deleteMyAccount,
   getAllUsers,
+  getAllPassengers,
+  warnUser,
+  banUser,
+  unbanUser,
   getAllSuperAdmins,
   updateSuperAdminByAdmin,
   deletedUserById

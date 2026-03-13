@@ -12,6 +12,7 @@ import notFound from './app/middleware/notfound';
 import globalErrorHandler from './app/middleware/globalErrorhandler';
 import serverHomePage from './app/helpers/serverHomePage';
 import { logErrorHandler, logHttpRequests } from './app/utils/logger';
+import { stripeWebhookHandler } from './app/modules/payment/payment.controller';
 
 const app: Application = express();
 
@@ -19,6 +20,14 @@ const app: Application = express();
 /* ---------- Core middlewares ---------- */
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
+
+// ⚠️  Stripe webhook MUST be registered before express.json()
+// Stripe requires the raw request body to verify the signature.
+app.post(
+  '/api/v1/payment/webhook',
+  express.raw({ type: 'application/json' }),
+  stripeWebhookHandler,
+);
 
 app.use(express.json());
 app.use(cookieParser());
@@ -74,6 +83,8 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
 app.use(limiter); // 👈 Add before your routes
 
 /* ---------- Routes ---------- */
@@ -92,6 +103,7 @@ app.use(logErrorHandler);
 
 // Global error handler
 app.use(globalErrorHandler);
+
 app.use(notFound);           // 404 -> next(err) -> globalErrorHandler
 
 export default app;

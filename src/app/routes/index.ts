@@ -9,6 +9,10 @@ import { PromoRoutes } from "../modules/promo/promo.route";
 import { FeedbackRoutes } from "../modules/feedback/feedback.route";
 import { RideRoutes } from "../modules/ride/ride.route";
 import { DriverRoutes } from "../modules/driver/driver.route";
+import { ReportRoutes } from "../modules/report/report.route";
+import { PaymentRoutes } from "../modules/payment/payment.route";
+import { MessageRoutes } from "../modules/message/message.route";
+import { DashboardRoutes } from "../modules/dashboard/dashboard.route";
 
 const router = Router();
 
@@ -52,8 +56,23 @@ const moduleRoutes = [
   {
      path: "/notifications",
      route: notificationRoutes
-  }
-
+  },
+  {
+    path: "/report",
+    route: ReportRoutes,
+  },
+  {
+    path: "/payment",
+    route: PaymentRoutes,
+  },
+  {
+    path: "/message",
+    route: MessageRoutes,
+  },
+  {
+    path: "/dashboard",
+    route: DashboardRoutes,
+  },
 ];
 
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

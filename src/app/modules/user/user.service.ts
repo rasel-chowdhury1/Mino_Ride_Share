@@ -522,6 +522,22 @@ const getPendingDrivers= async (
   return { meta, result };
 };
 
+const getAllPassengers = async (query: Record<string, unknown>) => {
+  const userQuery = new QueryBuilder(
+    User.find({ role: USER_ROLE.PASSENGER, isDeleted: false }),
+    query,
+  )
+    .search(['name', 'email'])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const result = await userQuery.modelQuery;
+  const meta   = await userQuery.countTotal();
+  return { meta, result };
+};
+
 const getAllUserCount = async () => {
   const allUserCount = await User.countDocuments();
   return allUserCount;
@@ -737,6 +753,68 @@ const updateSuperAdminByAdmin = async (
 
   
 
+const warnUser = async (targetUserId: string, adminId: string, reason: string) => {
+  const user = await User.findOne({ _id: targetUserId, isDeleted: false });
+  if (!user) throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+
+  if (user.status === 'banned') {
+    throw new AppError(httpStatus.BAD_REQUEST, 'Cannot warn a banned user');
+  }
+
+  await User.findByIdAndUpdate(targetUserId, {
+    $inc: { 'warnings.count': 1 },
+    $push: {
+      'warnings.logs': {
+        reason,
+        warnedAt: new Date(),
+        warnedBy: adminId,
+      },
+    },
+  });
+
+  return User.findById(targetUserId).select('name email status warnings');
+};
+
+const banUser = async (targetUserId: string, adminId: string, reason: string) => {
+  const user = await User.findOne({ _id: targetUserId, isDeleted: false });
+  if (!user) throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+
+  if (user.status === 'banned') {
+    throw new AppError(httpStatus.BAD_REQUEST, 'User is already banned');
+  }
+
+  return User.findByIdAndUpdate(
+    targetUserId,
+    {
+      status:    'banned',
+      banReason: reason,
+      bannedAt:  new Date(),
+      bannedBy:  adminId,
+    },
+    { new: true },
+  ).select('name email status banReason bannedAt');
+};
+
+const unbanUser = async (targetUserId: string) => {
+  const user = await User.findOne({ _id: targetUserId, isDeleted: false });
+  if (!user) throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+
+  if (user.status !== 'banned') {
+    throw new AppError(httpStatus.BAD_REQUEST, 'User is not banned');
+  }
+
+  return User.findByIdAndUpdate(
+    targetUserId,
+    {
+      status:    'active',
+      banReason: null,
+      bannedAt:  null,
+      bannedBy:  null,
+    },
+    { new: true },
+  ).select('name email status');
+};
+
 export const userService = {
   createUserToken,
   otpVerifyAndCreateUser,
@@ -757,5 +835,9 @@ export const userService = {
   getAllUserCount,
   updateSuperAdminByAdmin,
   getAllSuperAdmins,
+  getAllPassengers,
+  warnUser,
+  banUser,
+  unbanUser,
   deletedUserById
 };

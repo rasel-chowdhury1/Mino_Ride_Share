@@ -19,6 +19,7 @@ import { logger } from '../app/utils/logger';
 import { Driver } from '../app/modules/driver/driver.model';
 import { Ride } from '../app/modules/ride/ride.model';
 import { RideService } from '../app/modules/ride/ride.service';
+import { MessageService } from '../app/modules/message/message.service';
 import { cleanupRateLimitEntry } from './socket.server';
 import {
   isManagerReady,
@@ -29,6 +30,8 @@ import {
   joinRideRoom,
   leaveRideRoom,
   emitToRideRoom,
+  emitToPassenger,
+  emitToDriver,
   broadcastToNearbyDrivers,
   broadcastOnlineUsers,
   passengerRoom,
@@ -109,7 +112,7 @@ export function registerSocketEvents(socket: Socket, _io: SocketIOServer): void 
     return;
   }
 
-  const { _id: userId, role, driverProfileId, name } = socket.user;
+  const { _id: userId, role, driverProfileId, name, } = socket.user;
 
   // ── On-connect setup ──────────────────────────────────────────────────────
 
@@ -442,6 +445,8 @@ export function registerSocketEvents(socket: Socket, _io: SocketIOServer): void 
   socket.on(
     SocketEvents.UPDATE_LOCATION,
     async (payload: UpdateLocationPayload, ackFn?: AckFn) => {
+
+      console.log("payload =>>>> ", payload);
       try {
         if (role !== 'driver' || !driverProfileId) {
           return sendAck(ackFn, { success: false, error: 'Only drivers can update location', code: 403 });
@@ -468,12 +473,21 @@ export function registerSocketEvents(socket: Socket, _io: SocketIOServer): void 
         });
 
         if (data.rideId) {
-          emitToRideRoom(data.rideId, SocketEvents.DRIVER_LOCATION_UPDATED, {
+          const locationPayload = {
             driverProfileId,
             rideId:      data.rideId,
             coordinates: [data.lng, data.lat] as [number, number],
             updatedAt:   new Date(),
-          });
+          };
+
+          // Emit to ride room (covers anyone who joined)
+          emitToRideRoom(data.rideId, SocketEvents.DRIVER_LOCATION_UPDATED, locationPayload);
+
+          // Also emit directly to the passenger in case they missed the room join
+          const ride = await Ride.findById(data.rideId).select('passenger').lean();
+          if (ride?.passenger) {
+            emitToPassenger(ride.passenger.toString(), SocketEvents.DRIVER_LOCATION_UPDATED, locationPayload);
+          }
         }
 
         sendAck(ackFn, { success: true });
@@ -481,6 +495,171 @@ export function registerSocketEvents(socket: Socket, _io: SocketIOServer): void 
         logger.error(`[${SocketEvents.UPDATE_LOCATION}] error:`, err);
         socket.emit(SocketEvents.DRIVER_ERROR, { message: 'Failed to update location' });
         sendAck(ackFn, { success: false, error: 'Failed to update location', code: 500 });
+      }
+    },
+  );
+
+  /**
+   * end_ride — driver provides actual dropoff coordinates; recalculates fare.
+   */
+  socket.on(
+    SocketEvents.END_RIDE,
+    async (payload: unknown, ackFn?: AckFn) => {
+      try {
+        if (role !== 'driver' || !driverProfileId) {
+          return sendAck(ackFn, { success: false, error: 'Only drivers can end rides', code: 403 });
+        }
+
+        const EndRideSchema = z.object({
+          rideId: z.string().min(1),
+          address: z.string().min(1),
+          coordinates: z.tuple([z.number(), z.number()]),
+        });
+
+        const data = validate(EndRideSchema, payload, ackFn);
+        if (!data) return;
+
+        const dropoffLocation = {
+          address: data.address,
+          location: { type: 'Point' as const, coordinates: data.coordinates },
+        };
+
+        await RideService.endRide(data.rideId, driverProfileId, dropoffLocation);
+
+        sendAck(ackFn, { success: true, data: { rideId: data.rideId, status: 'END_RIDE' } });
+        logger.info(`[END RIDE] driver=${userId} ride=${data.rideId}`);
+      } catch (err: any) {
+        logger.error(`[${SocketEvents.END_RIDE}] error:`, err);
+        sendAck(ackFn, { success: false, error: err.message ?? 'Failed to end ride', code: 500 });
+      }
+    },
+  );
+
+  /**
+   * arrived_dropoff — driver arrives at actual dropoff location; recalculates fare.
+   */
+  socket.on(
+    SocketEvents.ARRIVED_DROPOFF,
+    async (payload: unknown, ackFn?: AckFn) => {
+      try {
+        if (role !== 'driver' || !driverProfileId) {
+          return sendAck(ackFn, { success: false, error: 'Only drivers can use this event', code: 403 });
+        }
+
+        const ArrivedDropoffSchema = z.object({
+          rideId: z.string().min(1),
+          address: z.string().min(1),
+          coordinates: z.tuple([z.number(), z.number()]),
+        });
+
+        const data = validate(ArrivedDropoffSchema, payload, ackFn);
+        if (!data) return;
+
+        const dropoffLocation = {
+          address: data.address,
+          location: { type: 'Point' as const, coordinates: data.coordinates },
+        };
+
+        await RideService.arrivedDropoff(data.rideId, driverProfileId, dropoffLocation);
+
+        sendAck(ackFn, { success: true, data: { rideId: data.rideId, status: 'ARRIVED_DROPOFF' } });
+        logger.info(`[ARRIVED DROPOFF] driver=${userId} ride=${data.rideId}`);
+      } catch (err: any) {
+        logger.error(`[${SocketEvents.ARRIVED_DROPOFF}] error:`, err);
+        sendAck(ackFn, { success: false, error: err.message ?? 'Failed to arrive at dropoff', code: 500 });
+      }
+    },
+  );
+
+  /**
+   * confirm_dropoff — driver confirms dropoff; passenger receives fare breakdown.
+   */
+  socket.on(
+    SocketEvents.CONFIRM_DROPOFF,
+    async (payload: unknown, ackFn?: AckFn) => {
+      try {
+        if (role !== 'driver' || !driverProfileId) {
+          return sendAck(ackFn, { success: false, error: 'Only drivers can confirm dropoff', code: 403 });
+        }
+
+        const data = validate(RideIdSchema, payload, ackFn);
+        if (!data) return;
+
+        await RideService.confirmDropoff(data.rideId, driverProfileId);
+
+        sendAck(ackFn, { success: true, data: { rideId: data.rideId, status: 'CONFIRM_DROPOFF' } });
+        logger.info(`[CONFIRM DROPOFF] driver=${userId} ride=${data.rideId}`);
+      } catch (err: any) {
+        logger.error(`[${SocketEvents.CONFIRM_DROPOFF}] error:`, err);
+        sendAck(ackFn, { success: false, error: err.message ?? 'Failed to confirm dropoff', code: 500 });
+      }
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CHAT EVENTS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * send_message — passenger or driver sends a chat message.
+   * Persists to DB then delivers to the other participant in real time.
+   */
+  socket.on(
+    SocketEvents.SEND_MESSAGE,
+    async (payload: unknown, ackFn?: AckFn) => {
+      try {
+        if (role !== 'passenger' && role !== 'driver') {
+          return sendAck(ackFn, { success: false, error: 'Unauthorized', code: 403 });
+        }
+
+        const SendMessageSchema = z.object({
+          rideId:  z.string().min(1),
+          message: z.string().min(1).max(1000),
+        });
+
+
+        const data = validate(SendMessageSchema, payload, ackFn);
+        if (!data) return;
+
+        // For drivers, senderId is the userId (stored on User), not driverProfileId
+        const saved = await MessageService.sendMessage({
+          rideId:     data.rideId,
+          senderId:   userId,
+          senderRole: role as 'passenger' | 'driver',
+          message:    data.message,
+        });
+
+        const messagePayload = {
+          _id:        (saved as any)._id,
+          rideId:     data.rideId,
+          senderId:   userId,
+          senderRole: role,
+          message:    data.message,
+          createdAt:  (saved as any).createdAt,
+        };
+
+        // Deliver to the ride room (covers both participants if they joined)
+        emitToRideRoom(data.rideId, SocketEvents.MESSAGE_RECEIVED, messagePayload);
+
+        // Also deliver directly to the receiver for reliability
+        const receiverId = (saved as any).receiverId?.toString();
+        if (receiverId) {
+          if (role === 'passenger') {
+            // receiver is the driver — look up their driverProfileId to use driverRoom
+            const ride = await Ride.findById(data.rideId).select('driver').lean();
+            if (ride?.driver) {
+              emitToDriver(ride.driver.toString(), SocketEvents.MESSAGE_RECEIVED, messagePayload);
+            }
+          } else {
+            // receiver is the passenger
+            emitToPassenger(receiverId, SocketEvents.MESSAGE_RECEIVED, messagePayload);
+          }
+        }
+
+        sendAck(ackFn, { success: true, data: messagePayload });
+      } catch (err: any) {
+        logger.error(`[${SocketEvents.SEND_MESSAGE}] error:`, err);
+        sendAck(ackFn, { success: false, error: err.message ?? 'Failed to send message', code: 500 });
       }
     },
   );

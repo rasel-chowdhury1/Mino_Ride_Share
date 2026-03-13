@@ -195,6 +195,8 @@ export function emitToDriver(driverProfileId: string, event: string, data: unkno
 
 /** Emit to all sockets in a ride room (passenger + assigned driver). */
 export function emitToRideRoom(rideId: string, event: string, data: unknown): void {
+  console.log("emitToRideRoom =>>>> ", rideId, event, data);
+  console.log("rideRoom =>>> ", rideRoom(rideId));
   _io?.to(rideRoom(rideId)).emit(event, data);
 }
 
