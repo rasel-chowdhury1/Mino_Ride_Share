@@ -233,7 +233,37 @@ const updateMyProfile = async (
 ) => {
 
   console.log("payload of===>>>>> ", payload);
-  const { name, gender, dateOfBirth, profileImage, homeAddress, ...driverFields } = payload;
+  const { name, gender, role, dateOfBirth, profileImage, homeAddress, ...driverFields } = payload;
+
+  if (role === USER_ROLE.ADMIN) {
+    const updatedAdmin = await User.findOneAndUpdate(
+      { _id: userId },
+      {
+        ...(name !== undefined && { name }),
+        ...(profileImage && { profileImage }),
+      },
+      { new: true, runValidators: true },
+    );
+
+    if (!updatedAdmin) throw new AppError(httpStatus.NOT_FOUND, 'User not found');
+
+    const accessToken = createToken({
+      payload: {
+        userId: updatedAdmin._id.toString(),
+        name: updatedAdmin.name || '',
+        email: updatedAdmin.email,
+        role: updatedAdmin.role,
+        adminVerified: updatedAdmin.adminVerified,
+        profileImage: updatedAdmin.profileImage || '',
+        homeAddress: updatedAdmin.homeAddress || '',
+        isDriverProfileCompleted: updatedAdmin.isDriverProfileCompleted,
+      },
+      access_secret: config.jwt_access_secret as string,
+      expity_time: config.jwt_access_expires_in as string,
+    });
+
+    return { user: updatedAdmin, accessToken };
+  }
 
   // 1️⃣ Find user
   const user = await User.findById(userId);
@@ -241,9 +271,10 @@ const updateMyProfile = async (
     throw new AppError(httpStatus.NOT_FOUND, 'User not found');
   }
 
+
   /*
   |------------------------------------------------------------------
-  | PASSENGER UPDATE
+  | PASSENGER / ADMIN / SUPERADMIN UPDATE
   |------------------------------------------------------------------
   */
   if (user.role === USER_ROLE.PASSENGER || user.role === USER_ROLE.SUPERADMIN || user.role === USER_ROLE.ADMIN) {
@@ -254,7 +285,23 @@ const updateMyProfile = async (
     if (homeAddress) user.homeAddress = homeAddress;
 
     await user.save();
-    return user;
+
+    const accessToken = createToken({
+      payload: {
+        userId: user._id.toString(),
+        name: user.name || '',
+        email: user.email,
+        role: user.role,
+        adminVerified: user.adminVerified,
+        profileImage: user.profileImage || '',
+        homeAddress: user.homeAddress || '',
+        isDriverProfileCompleted: user.isDriverProfileCompleted,
+      },
+      access_secret: config.jwt_access_secret as string,
+      expity_time: config.jwt_access_expires_in as string,
+    });
+
+    return { user, accessToken };
   }
 
 
@@ -282,7 +329,22 @@ const updateMyProfile = async (
     user.isDriverProfileCompleted = false; // wait for admin approval
     await user.save();
 
-    return { user, driver };
+    const accessToken = createToken({
+      payload: {
+        userId: user._id.toString(),
+        name: user.name || '',
+        email: user.email,
+        role: user.role,
+        adminVerified: user.adminVerified,
+        profileImage: user.profileImage || '',
+        homeAddress: user.homeAddress || '',
+        isDriverProfileCompleted: user.isDriverProfileCompleted,
+      },
+      access_secret: config.jwt_access_secret as string,
+      expity_time: config.jwt_access_expires_in as string,
+    });
+
+    return { user, driver, accessToken };
   }
 
   // 3️⃣ Update existing driver profile
@@ -309,7 +371,22 @@ const updateMyProfile = async (
 
   await user.save();
 
-  return { user, driver: updatedDriver };
+  const accessToken = createToken({
+    payload: {
+      userId: user._id.toString(),
+      name: user.name || '',
+      email: user.email,
+      role: user.role,
+      adminVerified: user.adminVerified,
+      profileImage: user.profileImage || '',
+      homeAddress: user.homeAddress || '',
+      isDriverProfileCompleted: user.isDriverProfileCompleted,
+    },
+    access_secret: config.jwt_access_secret as string,
+    expity_time: config.jwt_access_expires_in as string,
+  });
+
+  return { user, driver: updatedDriver, accessToken };
 };
 
 
@@ -423,8 +500,8 @@ const declineDriverUserById = async (userId: string, reason?: string) => {
 
   const declineDriver = await Driver.findByIdAndUpdate(
     user.driverProfileId,
-    { approvalStatus: "rejected" },
-    { new: true, runValidators: true } // ensure validation runs
+    { approvalStatus: "rejected", rejectionReason: reason ?? null },
+    { new: true, runValidators: true }
   )
 
   // ✅ Send Notification to Technician (receiver)
@@ -475,49 +552,49 @@ const getAllUserQuery = async (userId: string, query: Record<string, unknown>) =
   return { meta, result };
 };
 
-const getAllDrivers =  async (
-  query: Record<string, any> = {}
-) => {
-  // Filter users by role
+const getAllDrivers = async (query: Record<string, any> = {}) => {
   const roleFilter = {
     role: USER_ROLE.DRIVER,
-    adminVerified: "verified",
+    adminVerified: 'verified',
     isDeleted: false,
   };
 
-  const userQuery = new QueryBuilder(User.find(roleFilter), query)
-    .search(['name', 'profileImage', 'email']) // corrected search fields
+  const userQuery = new QueryBuilder(
+    User.find(roleFilter).populate('driverProfileId'),
+    query,
+  )
+    .search(['name', 'email'])
     .filter()
     .sort()
     .paginate()
     .fields();
 
   const result = await userQuery.modelQuery;
-  const meta = await userQuery.countTotal();
+  const meta   = await userQuery.countTotal();
 
   return { meta, result };
 };
 
-const getPendingDrivers= async (
-  query: Record<string, any> = {}
-) => {
-  // Filter users by role
+const getPendingDrivers = async (query: Record<string, any> = {}) => {
   const roleFilter = {
-    role: { $in: [USER_ROLE.DRIVER] },
-    adminVerified: "pending",
+    role: USER_ROLE.DRIVER,
+    adminVerified: 'pending',
     isDeleted: false,
-    status: "active",
+    status: 'active',
   };
 
-  const userQuery = new QueryBuilder(User.find(roleFilter), query)
-    .search(['name', 'profileImage', 'email']) // corrected search fields
+  const userQuery = new QueryBuilder(
+    User.find(roleFilter).populate('driverProfileId'),
+    query,
+  )
+    .search(['name', 'email'])
     .filter()
     .sort()
     .paginate()
     .fields();
 
   const result = await userQuery.modelQuery;
-  const meta = await userQuery.countTotal();
+  const meta   = await userQuery.countTotal();
 
   return { meta, result };
 };
@@ -760,6 +837,8 @@ const warnUser = async (targetUserId: string, adminId: string, reason: string) =
   if (user.status === 'banned') {
     throw new AppError(httpStatus.BAD_REQUEST, 'Cannot warn a banned user');
   }
+
+  console.log("payload of warn user =>>>>>> ", targetUserId, adminId, reason);
 
   await User.findByIdAndUpdate(targetUserId, {
     $inc: { 'warnings.count': 1 },

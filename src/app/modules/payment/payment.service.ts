@@ -21,12 +21,17 @@ import { SocketEvents } from '../../../socket/socket.types';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface CreatePaymentPayload {
-  rideId:        string;
-  passengerId:   string;
-  driverId:      string;
-  amount:        number;
-  tip?:          number;
-  paymentMethod: TPaymentMethod;
+  rideId:          string;
+  passengerId:     string;
+  driverId:        string;
+  amount:          number;
+  totalFare?:      number;
+  driverEarning?:  number;
+  adminCommission?: number;
+  promo?:          string;
+  promoDiscount?:  number;
+  tip?:            number;
+  paymentMethod:   TPaymentMethod;
   stripePaymentIntentId?: string;
 }
 
@@ -36,7 +41,12 @@ const createPayment = async (payload: CreatePaymentPayload): Promise<IPayment> =
     passengerId:           payload.passengerId,
     driverId:              payload.driverId,
     amount:                payload.amount,
-    tip:                   payload.tip ?? 0,
+    totalFare:             payload.totalFare      ?? payload.amount,
+    driverEarning:         payload.driverEarning  ?? 0,
+    adminCommission:       payload.adminCommission ?? 0,
+    promo:                 payload.promo           ?? null,
+    promoDiscount:         payload.promoDiscount   ?? 0,
+    tip:                   payload.tip             ?? 0,
     paymentMethod:         payload.paymentMethod,
     paymentStatus:         'PAID',
     stripePaymentIntentId: payload.stripePaymentIntentId,
@@ -172,6 +182,8 @@ const handleStripeWebhook = async (
   }
 
   let event: Stripe.Event;
+
+  console.log("event ==:>>>>>>>>>> ");
   try {
     event = stripeClient.webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch (err) {
@@ -199,15 +211,26 @@ const handleStripeWebhook = async (
           rideId,
           passengerId,
           driverId,
-          amount:        ride.totalFare ?? 0,
-          tip:           ride.tip ?? 0,
-          paymentMethod: 'CARD',
-          paymentStatus: 'PAID',
+          amount:          ride.totalFare      ?? 0,
+          totalFare:       ride.totalFare      ?? 0,
+          driverEarning:   ride.driverEarning  ?? 0,
+          adminCommission: ride.adminCommission ?? 0,
+          promo:           ride.promo           ?? null,
+          promoDiscount:   ride.promoDiscount   ?? 0,
+          tip:             ride.tip             ?? 0,
+          paymentMethod:   'CARD',
+          paymentStatus:   'PAID',
           stripePaymentIntentId: session.payment_intent as string,
           paidAt: new Date(),
         });
       } else {
         existingPayment.paymentStatus         = 'PAID';
+        existingPayment.totalFare             = ride.totalFare      ?? 0;
+        existingPayment.driverEarning         = ride.driverEarning  ?? 0;
+        existingPayment.adminCommission       = ride.adminCommission ?? 0;
+        existingPayment.promo                 = ride.promo           ?? null;
+        existingPayment.promoDiscount         = ride.promoDiscount   ?? 0;
+        existingPayment.tip                   = ride.tip             ?? 0;
         existingPayment.stripePaymentIntentId = session.payment_intent as string;
         existingPayment.paidAt                = new Date();
         await existingPayment.save();
@@ -324,13 +347,11 @@ const getDriverPayments = async (
 const adminGetAllPayments = async (query: Record<string, unknown>) => {
   const paymentQuery = new QueryBuilder(
     Payment.find({ isDeleted: false })
-      .populate('rideId', 'rideId pickupLocation dropoffLocation status')
       .populate('passengerId', 'name profileImage phoneNumber')
-      .populate({ path: 'driverId', select: 'userId vehicleModel vehicleBrand', populate: { path: 'userId', select: 'name profileImage' } })
       .sort({ createdAt: -1 }),
     query,
   )
-    .search(['paymentMethod', 'paymentStatus'])
+    .search(['transactionId', 'paymentMethod', 'paymentStatus'])
     .filter()
     .paginate();
 

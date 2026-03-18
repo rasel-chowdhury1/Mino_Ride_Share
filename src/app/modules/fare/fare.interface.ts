@@ -29,4 +29,5 @@ export interface IFare {
   platformCommissionPercentage: number;
 
   isActive: boolean;
+  isDeleted: boolean;
 }

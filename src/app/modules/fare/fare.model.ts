@@ -45,6 +45,10 @@ const FareSchema = new Schema<IFare>(
       type: Boolean,
       default: true,
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

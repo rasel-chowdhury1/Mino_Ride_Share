@@ -61,6 +61,10 @@ userRoutes
 
   .get('/all-passengers', auth(USER_ROLE.ADMIN), userController.getAllPassengers)
 
+  .get('/all-approved-drivers', auth(USER_ROLE.ADMIN), userController.getAllApprovedDrivers)
+
+  .get('/all-request-drivers', auth(USER_ROLE.ADMIN), userController.getAllRequestDrivers)
+
   .get(
     "/super_admins",
     auth(USER_ROLE.ADMIN),
@@ -94,6 +98,18 @@ userRoutes
     '/block/:id',
     auth('admin'),
     userController.blockedUser,
+  )
+
+  .patch(
+    '/approve-driver/:id',
+    auth(USER_ROLE.ADMIN),
+    userController.approveDriver,
+  )
+
+  .patch(
+    '/reject-driver/:id',
+    auth(USER_ROLE.ADMIN),
+    userController.rejectDriver,
   )
 
   .patch(

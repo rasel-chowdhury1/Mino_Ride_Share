@@ -11,7 +11,7 @@ export type TAddress = {
 };
 
 export type TUserRole = 'admin' | 'passenger' | 'driver' | 'superadmin';
-export type TUserStatus = 'active' | 'blocked';
+export type TUserStatus = 'active' | 'blocked' | 'banned';
 export type TAdminVerify = 'pending' | 'approved' | 'rejected';
 export type TGender = 'male' | 'female' | 'other';
 
@@ -44,7 +44,11 @@ export interface TUserCreate {
   isDriverProfileCompleted: boolean;
 
   status: TUserStatus;
+  accessibleRoutes: string[];
   warnings?: {};
+  banReason?: string;
+  bannedAt?: Date;
+  bannedBy?: Types.ObjectId;
   isDeleted: boolean;
   acceptTerms: boolean;
   fcmToken?: string;

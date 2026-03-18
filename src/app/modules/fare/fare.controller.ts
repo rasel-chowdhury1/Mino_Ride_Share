@@ -48,9 +48,21 @@ const updateFare = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const deleteFare = catchAsync(async (req: Request, res: Response) => {
+  const result = await FareService.deleteFare(req.params.id);
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: 'Fare configuration deleted successfully',
+    data: result,
+  });
+});
+
 export const FareController = {
   createFare,
   getAllFares,
   getFareByCountry,
   updateFare,
+  deleteFare,
 };

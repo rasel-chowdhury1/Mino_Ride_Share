@@ -29,4 +29,10 @@ router.patch(
   FareController.updateFare
 );
 
+router.delete(
+  '/delete/:id',
+  auth(USER_ROLE.ADMIN),
+  FareController.deleteFare
+);
+
 export const FareRoutes = router;

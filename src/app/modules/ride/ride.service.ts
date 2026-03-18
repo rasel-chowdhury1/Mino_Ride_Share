@@ -801,10 +801,10 @@ const cancelRide = async (
 
 const adminGetAllRides = async (query: Record<string, unknown>) => {
   const rideQuery = new QueryBuilder(
-    Ride.find({ isDeleted: false }).populate('passenger').populate('driver'),
+    Ride.find({ isDeleted: false }).populate('passenger', "name profileImage").populate('driver', 'name profileImage'),
     query,
   )
-    .search(['status', 'serviceType'])
+    .search(['rideId', 'status', 'serviceType'])
     .filter()
     .paginate();
 

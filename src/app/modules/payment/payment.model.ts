@@ -32,6 +32,31 @@ const PaymentSchema = new Schema<IPayment>(
       required: true,
     },
 
+    totalFare: {
+      type: Number,
+      default: 0,
+    },
+
+    driverEarning: {
+      type: Number,
+      default: 0,
+    },
+
+    adminCommission: {
+      type: Number,
+      default: 0,
+    },
+
+    promo: {
+      type: String,
+      default: null,
+    },
+
+    promoDiscount: {
+      type: Number,
+      default: 0,
+    },
+
     tip: {
       type: Number,
       default: 0,

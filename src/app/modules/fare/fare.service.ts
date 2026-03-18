@@ -50,9 +50,20 @@ const updateFare = async (id: string, payload: Partial<IFare>) => {
   return updated;
 };
 
+const deleteFare = async (id: string) => {
+  const deleted = await Fare.findByIdAndDelete(id);
+
+  if (!deleted) {
+    throw new AppError(404, 'Fare configuration not found');
+  }
+
+  return deleted;
+};
+
 export const FareService = {
   createFare,
   getAllFares,
   getFareByCountry,
   updateFare,
+  deleteFare,
 };

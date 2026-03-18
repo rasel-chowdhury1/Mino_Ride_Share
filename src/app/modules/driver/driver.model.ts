@@ -86,6 +86,11 @@ const driverSchema = new Schema<IDriver, DriverModel>(
       default: 'pending',
     },
 
+    rejectionReason: {
+      type: String,
+      default: null,
+    },
+
     isOnline: {
       type: Boolean,
       default: false,

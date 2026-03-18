@@ -61,14 +61,14 @@ const updateMyProfile = catchAsync(async (req: Request, res: Response) => {
   }
 
   // 2️⃣ Call service
-  const result = await userService.updateMyProfile(userId, payload);
+  const { accessToken, ...rest } = await userService.updateMyProfile(userId, payload) as any;
 
   // 3️⃣ Send response
   sendResponse(res, {
     statusCode: httpStatus.OK,
     success: true,
     message: 'Profile updated successfully',
-    data: result,
+    data: { ...rest, accessToken },
   });
   
 });
@@ -122,6 +122,30 @@ const getAllPassengers = catchAsync(async (req: Request, res: Response) => {
     meta: result.meta,
     data: result.result,
     message: 'Passengers retrieved successfully',
+  });
+});
+
+const getAllApprovedDrivers = catchAsync(async (req: Request, res: Response) => {
+  const result = await userService.getAllDrivers(req.query);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    meta: result.meta,
+    data: result.result,
+    message: 'Approved drivers retrieved successfully',
+  });
+});
+
+const getAllRequestDrivers = catchAsync(async (req: Request, res: Response) => {
+  const result = await userService.getPendingDrivers(req.query);
+
+  sendResponse(res, {
+    success: true,
+    statusCode: httpStatus.OK,
+    meta: result.meta,
+    data: result.result,
+    message: 'Pending driver requests retrieved successfully',
   });
 });
 
@@ -202,6 +226,31 @@ const deletedUserById = catchAsync(async (req: Request, res: Response) => {
   });
 })
 
+const approveDriver = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const result = await userService.verifyDriverUserById(id);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Driver approved successfully',
+    data: result,
+  });
+});
+
+const rejectDriver = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const result = await userService.declineDriverUserById(id, reason);
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: 'Driver rejected successfully',
+    data: result,
+  });
+});
+
 const warnUser = catchAsync(async (req: Request, res: Response) => {
   const adminId = req.user.userId;
   const { id }  = req.params;
@@ -253,6 +302,10 @@ export const userController = {
   deleteMyAccount,
   getAllUsers,
   getAllPassengers,
+  getAllApprovedDrivers,
+  getAllRequestDrivers,
+  approveDriver,
+  rejectDriver,
   warnUser,
   banUser,
   unbanUser,

@@ -31,6 +31,7 @@ export interface IDriver {
   currentLocation: TLocation;
 
   approvalStatus: TDriverApprovalStatus;
+  rejectionReason?: string | null;
   isOnline: boolean;
   isOnRide: boolean;
   totalEarnings: number;

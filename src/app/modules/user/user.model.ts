@@ -170,6 +170,12 @@ const userSchema = new Schema<TUserCreate>(
       default: 'active',
     },
 
+    accessibleRoutes: {
+      type: [String],
+      required: false,
+      default: [],
+    },
+
     warnings: {
       count: { type: Number, default: 0 },
       logs: [

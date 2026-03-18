@@ -21,7 +21,8 @@ const auth = (...userRoles: string[]) => {
       token,
       access_secret: config.jwt_access_secret as string,
     });
-     
+
+
   
     const { role, userId } = decodeData;
 
