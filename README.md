@@ -1,6 +1,20 @@
 # Mino Ride Share — Backend API
 
-Production-ready Node.js + TypeScript backend for the **Mino Ride Share** platform. Includes a REST API, real-time Socket.IO server, geospatial ride matching, fare estimation, promo codes, OTP verification, and push/email notifications.
+A production-ready ride-sharing backend built with **Node.js**, **Express**, **TypeScript**, **MongoDB**, and **Socket.IO**. Supports real-time ride matching, Stripe payments, in-ride chat, admin dashboards, and horizontal scaling via Redis.
+
+---
+
+## Table of Contents
+
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
+- [API Reference](#api-reference)
+- [Socket.IO Events](#socketio-events)
+- [Ride Status Flow](#ride-status-flow)
+- [Payment Flow](#payment-flow)
+- [Scripts](#scripts)
 
 ---
 
@@ -10,14 +24,13 @@ Production-ready Node.js + TypeScript backend for the **Mino Ride Share** platfo
 |---|---|
 | Runtime | Node.js + TypeScript |
 | Framework | Express.js |
-| Database | MongoDB + Mongoose |
+| Database | MongoDB + Mongoose (GeoJSON / 2dsphere) |
 | Real-time | Socket.IO 4.x (separate port) |
 | Scaling | Redis adapter (`@socket.io/redis-adapter`) |
 | Auth | JWT (access + refresh tokens) |
-| OTP | Twilio SMS |
 | Email | Nodemailer |
-| Payments | Stripe |
-| File Storage | AWS S3 |
+| Payments | Stripe Checkout |
+| File Upload | Multer |
 | Logging | Winston + daily rotate |
 | Validation | Zod |
 | Scheduling | node-cron |
@@ -29,32 +42,33 @@ Production-ready Node.js + TypeScript backend for the **Mino Ride Share** platfo
 ```
 src/
 ├── app/
-│   ├── config/          # Environment config
-│   ├── DB/              # Default admin seeder
-│   ├── error/           # AppError class + global error handler
-│   ├── middleware/       # Auth middleware, rate limiting
 │   ├── modules/
-│   │   ├── auth/        # Login, register, refresh token
-│   │   ├── driver/      # Driver profile, verification, location
-│   │   ├── fare/        # Fare rules per vehicle & country
-│   │   ├── feedback/    # Ride feedback/ratings
-│   │   ├── notifications/ # In-app notifications
-│   │   ├── otp/         # OTP generation & verification (Twilio)
-│   │   ├── promo/       # Promo codes & discounts
-│   │   ├── ride/        # Ride lifecycle (create → complete)
-│   │   ├── setting/     # App settings
-│   │   └── user/        # User profile management
-│   ├── routes/          # Central route aggregator
-│   └── utils/           # Shared utilities (logger, email, token, etc.)
+│   │   ├── auth/           # Login, refresh token, OTP, password reset
+│   │   ├── user/           # Registration, profiles, admin actions (warn/ban)
+│   │   ├── driver/         # Driver online/offline toggle
+│   │   ├── ride/           # Ride lifecycle (create → complete)
+│   │   ├── payment/        # Stripe checkout, webhooks, payment history
+│   │   ├── fare/           # Country-based fare config
+│   │   ├── promo/          # Promo codes & discounts
+│   │   ├── feedback/       # User feedback & ratings
+│   │   ├── report/         # Incident reports
+│   │   ├── message/        # In-ride chat
+│   │   ├── notifications/  # Push notifications
+│   │   ├── otp/            # OTP management
+│   │   ├── setting/        # Privacy, terms, about us
+│   │   └── dashboard/      # Admin analytics
+│   ├── middleware/         # Auth, file upload, validation, error handling
+│   ├── builder/            # QueryBuilder utility (search, filter, paginate)
+│   ├── config/             # Environment configuration
+│   ├── utils/              # Helpers (logger, email, token, stripe, etc.)
+│   └── DB/                 # Default admin seed
 ├── socket/
-│   ├── socket.server.ts      # Socket.IO bootstrap, JWT auth, rate limiter, Redis adapter
-│   ├── socket.manager.ts     # Online users/drivers registry, room helpers, emit functions
-│   ├── socket.events.ts      # Ride-domain socket event handlers
-│   ├── notification.events.ts # Notification socket events, connectedUsers map
-│   └── socket.types.ts       # TypeScript interfaces, SocketEvents const, Zod schemas
-├── socketIo.ts          # Public socket API (emitNotification, notification helpers)
-├── app.ts               # Express app setup
-└── server.ts            # Entry point, HTTP server, cron jobs
+│   ├── socket.server.ts    # Socket.IO server init + Redis adapter
+│   ├── socket.manager.ts   # Singleton: rooms, emit helpers
+│   ├── socket.events.ts    # All event handlers with Zod validation
+│   └── socket.types.ts     # Event constants & payload types
+├── app.ts                  # Express app
+└── server.ts               # HTTP server + cron jobs
 ```
 
 ---
@@ -64,80 +78,16 @@ src/
 ### Prerequisites
 
 - Node.js >= 18
-- MongoDB
-- (Optional) Redis — for horizontal Socket.IO scaling
+- MongoDB Atlas or local MongoDB
+- Redis (optional — for Socket.IO horizontal scaling)
+- Stripe account
 
 ### Installation
 
 ```bash
-git clone https://github.com/rasel-chowdhury1/Mino_Ride_Share.git
+git clone <repo-url>
 cd Mino_Ride_Share
 npm install
-```
-
-### Environment Variables
-
-Create a `.env` file in the root:
-
-```env
-# App
-NODE_ENV=development
-PROJECT_NAME=Mino Ride Share
-PORT=8010
-IP=localhost
-SERVER_URL=http://localhost:8010
-CLIENT_URL=http://localhost:3000
-
-# Database
-DATABASE_URL=mongodb://localhost:27017/mino_ride_share
-
-# Socket.IO
-SOCKET_PORT=9020
-
-# JWT
-JWT_ACCESS_SECRET=your_access_secret
-JWT_REFRESH_SECRET=your_refresh_secret
-JWT_ACCESS_EXPIRES_IN=1d
-JWT_REFRESH_EXPIRES_IN=30d
-
-# Bcrypt
-BCRYPT_SALT_ROUNDS=12
-
-# Default Admin
-ADMIN_EMAIL=admin@minorideshere.com
-ADMIN_PASSWORD=Admin@1234
-ADMIN_PHONE=+8801700000000
-
-# Email (Nodemailer)
-NODEMAILER_HOST=smtp.gmail.com
-NODEMAILER_PORT=587
-NODEMAILER_HOST_EMAIL=your@gmail.com
-NODEMAILER_HOST_PASS=your_app_password
-NODEMAILER_FROM_NAME=Mino Ride Share
-
-# OTP / SMS (Twilio)
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=your_auth_token
-TWILIO_PHONE_NUMBER=+1xxxxxxxxxx
-
-# Stripe
-STRIPE_API_KEY=pk_test_xxxx
-STRIPE_API_SECRET=sk_test_xxxx
-
-# AWS S3
-S3_BUCKET_ACCESS_KEY=your_access_key
-S3_BUCKET_SECRET_ACCESS_KEY=your_secret_key
-AWS_REGION=ap-southeast-1
-AWS_BUCKET_NAME=your-bucket
-
-# Redis (optional — enables horizontal Socket.IO scaling)
-# Get from Upstash: rediss://default:PASSWORD@host:6379
-REDIS_URL=rediss://default:xxxx@quality-fly-16092.upstash.io:6379
-
-# Branding
-LOGO_URL=https://your-logo-url.com/logo.png
-PRIMARY_COLOR=#FF6B35
-SUPPORT_EMAIL=support@minorideshere.com
 ```
 
 ### Run
@@ -146,9 +96,9 @@ SUPPORT_EMAIL=support@minorideshere.com
 # Development (hot reload)
 npm run dev
 
-# Production build
+# Production
 npm run build
-npm run start:prod
+npm start
 ```
 
 ---

@@ -22,9 +22,16 @@ const createRide = catchAsync(async (req: Request, res: Response) => {
 
 const driverAcceptRide = catchAsync(async (req: Request, res: Response) => {
 
-  const {userId, driverProfileId} = req.user;
-  const {rideId} = req.params;
-  const result = await RideService.driverAcceptRide(rideId, driverProfileId);
+  const { driverProfileId } = req.user;
+  const { rideId } = req.params;
+  const { lat, lng } = req.body;
+
+  const result = await RideService.driverAcceptRide(
+    rideId,
+    driverProfileId,
+    lat !== undefined ? Number(lat) : undefined,
+    lng !== undefined ? Number(lng) : undefined,
+  );
 
   sendResponse(res, {
     statusCode: 201,

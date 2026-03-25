@@ -148,6 +148,10 @@ export function emitToPassenger(passengerId: string, event: string, data: unknow
 
   const room = passengerRoom(passengerId);
 
+  console.log("passenger room =>>>>> ", room);
+  console.log("hasRoomSockets =>>>> ", hasRoomSockets(room));
+  console.log("passenger event =>>>> ", event);
+
   if (hasRoomSockets(room)) {
     _io.to(room).emit(event, data);
     return true;
@@ -290,6 +294,8 @@ export async function broadcastRideRequestToNearbyDrivers(
     return [];
   }
 
+  console.log("onlineIds ==>>>> ", onlineIds);
+
   const nearbyDrivers = await Driver.find({
     _id: { $in: onlineIds },
     isOnline: true,
@@ -300,6 +306,9 @@ export async function broadcastRideRequestToNearbyDrivers(
   const [pickupLng, pickupLat] = pickupCoordinates;
 
   const notified: string[] = [];
+
+  console.log("nearbyDrivers ===>>> ", nearbyDrivers);
+
   for (const driver of nearbyDrivers) {
     const driverProfileId = driver._id.toString();
     const entry = onlineDrivers.get(driverProfileId);

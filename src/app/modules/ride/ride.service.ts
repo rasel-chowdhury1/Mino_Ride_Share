@@ -88,25 +88,36 @@ const createRide = async (payload: IRide) => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const driverAcceptRide = async (rideId: string, driverId: string) => {
+const driverAcceptRide = async (
+  rideId: string,
+  driverId: string,
+  lat?: number,
+  lng?: number,
+) => {
   const ride = await Ride.findOne({ _id: rideId, driver: null });
   if (!ride) throw new Error('Ride not found or already accepted');
 
-  ride.driver          = new Types.ObjectId(driverId);
+  ride.driver           = new Types.ObjectId(driverId);
   ride.driverAcceptedAt = new Date();
-  ride.status          = 'ACCEPTED';
+  ride.status           = 'ACCEPTED';
 
   if (!ride.statusHistory) ride.statusHistory = [];
   ride.statusHistory.push({ status: 'ACCEPTED', changedAt: new Date() });
 
   const saved = await ride.save();
 
+  // Save driver's current location if provided
+  if (lat !== undefined && lng !== undefined) {
+    await Driver.findByIdAndUpdate(driverId, {
+      currentLocation: { type: 'Point', coordinates: [lng, lat] },
+    });
+  }
+
   // Emit: tell the passenger their ride was accepted (with enriched driver info)
   try {
     if (isManagerReady()) {
-      // Fetch driver profile + linked user in parallel
       const driverDoc = await Driver.findById(driverId)
-        .select('userId vehicleBrand vehicleModel licenseNumber vehicleType currentLocation')
+        .select('userId vehicleBrand vehicleModel vehicleType licenseNumber currentLocation averageRating totalTrips createdAt')
         .lean();
 
       const userDoc = driverDoc
@@ -115,41 +126,70 @@ const driverAcceptRide = async (rideId: string, driverId: string) => {
             .lean()
         : null;
 
-      // Distance from driver's current location to pickup
-      const driverEntry = getOnlineDriverEntry(driverId);
-      const driverCoords: [number, number] =
-        driverEntry?.location ?? driverDoc?.currentLocation?.coordinates ?? [0, 0];
+      // How long the driver has been on the platform
+      const joinedAt  = (driverDoc as any)?.createdAt as Date | undefined;
+      const now       = new Date();
+      const diffMs    = joinedAt ? now.getTime() - new Date(joinedAt).getTime() : 0;
+      const diffDays  = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const totalMonths = Math.floor(diffDays / 30.44);
+      const years     = Math.floor(totalMonths / 12);
+      const months    = totalMonths % 12;
+
+      let driverExperience: string;
+      if (diffDays < 30) {
+        driverExperience = diffDays <= 1 ? '1 day' : `${diffDays} days`;
+      } else if (totalMonths < 12) {
+        driverExperience = totalMonths === 1 ? '1 month' : `${totalMonths} months`;
+      } else if (months === 0) {
+        driverExperience = years === 1 ? '1 year' : `${years} years`;
+      } else {
+        driverExperience = `${years}.${months} year`;
+      }
+
+      // Prefer live location from request, then registry, then stored location
+      const driverLat = lat
+        ?? getOnlineDriverEntry(driverId)?.location?.[1]
+        ?? driverDoc?.currentLocation?.coordinates?.[1]
+        ?? 0;
+      const driverLng = lng
+        ?? getOnlineDriverEntry(driverId)?.location?.[0]
+        ?? driverDoc?.currentLocation?.coordinates?.[0]
+        ?? 0;
 
       const [pickupLng, pickupLat] = saved.pickupLocation.location.coordinates;
-      const [driverLng, driverLat] = driverCoords;
-      const distanceToPickupKm = getDistanceKm(pickupLat, pickupLng, driverLat, driverLng);
-      const speed = AVERAGE_SPEED_KMH[driverDoc?.vehicleType as TVehicleType] ?? 40;
-      const estimatedArrivalMin = Math.ceil((distanceToPickupKm / speed) * 60);
+      const distanceToPickupKm     = getDistanceKm(pickupLat, pickupLng, driverLat, driverLng);
+      const speed                  = AVERAGE_SPEED_KMH[driverDoc?.vehicleType as TVehicleType] ?? 40;
+      const estimatedArrivalMin    = Math.ceil((distanceToPickupKm / speed) * 60);
 
       const payload = {
         rideId:               saved._id.toString(),
+        status:    'ACCEPTED',
+        changedAt: new Date(),
         driverProfileId:      driverId,
-        driverName:           userDoc?.name           ?? '',
-        driverProfileImage:   userDoc?.profileImage   ?? '',
-        driverAverageRating:  userDoc?.averageRating  ?? 0,
-        driverPhoneNumber:    userDoc?.phoneNumber     ?? '',
-        driverCountryCode:    userDoc?.countryCode     ?? '',
-        vehicleBrand:         driverDoc?.vehicleBrand  ?? '',
-        vehicleModel:         driverDoc?.vehicleModel  ?? '',
-        licenseNumber:        driverDoc?.licenseNumber ?? '',
-        driverCurrentLocation: { lat: driverLat, lng: driverLng },
+        driverName:           userDoc?.name            ?? '',
+        driverProfileImage:   userDoc?.profileImage    ?? '',
+        driverAverageRating:  driverDoc?.averageRating ?? userDoc?.averageRating ?? 0,
+        driverPhoneNumber:    userDoc?.phoneNumber      ?? '',
+        driverCountryCode:    userDoc?.countryCode      ?? '',
+        vehicleBrand:         driverDoc?.vehicleBrand   ?? '',
+        vehicleModel:         driverDoc?.vehicleModel   ?? '',
+        vehicleType:          driverDoc?.vehicleType    ?? '',
+        licenseNumber:        driverDoc?.licenseNumber  ?? '',
+        driverCurrentLocation:   { lat: driverLat, lng: driverLng },
         estimatedArrivalMin,
-        acceptedAt:           saved.driverAcceptedAt,
+        totalRides:        driverDoc?.totalTrips ?? 0,
+        driverExperience,
+        acceptedAt:              saved.driverAcceptedAt,
       };
 
       const statusPayload = {
         rideId:    saved._id.toString(),
-        status: "ACCEPTED",
+        status:    'ACCEPTED',
         changedAt: new Date(),
       };
 
       emitToRideRoom(rideId, SocketEvents.RIDE_STATUS_UPDATED, statusPayload);
-
+      emitToPassenger(saved.passenger.toString(), SocketEvents.RIDE_STATUS_UPDATED, payload);
       emitToPassenger(saved.passenger.toString(), SocketEvents.RIDE_ACCEPTED, payload);
       emitToRideRoom(rideId, SocketEvents.RIDE_ACCEPTED, payload);
     }
@@ -187,7 +227,6 @@ const updateRideStatus = async (
       emitToRideRoom(rideId, SocketEvents.RIDE_STATUS_UPDATED, statusPayload);
       // Always emit directly to passenger — guards against missed room joins
       emitToPassenger(saved.passenger.toString(), SocketEvents.RIDE_STATUS_UPDATED, statusPayload);
-
       if (status === 'ONGOING') {
         emitToRideRoom(rideId, SocketEvents.RIDE_STARTED, statusPayload);
         emitToPassenger(saved.passenger.toString(), SocketEvents.RIDE_STARTED, statusPayload);
@@ -896,10 +935,11 @@ const getRidesByStatus = async (
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getRecentRides = async (userId: string, role: 'passenger' | 'driver', query: Record<string, unknown>) => {
+  
   const filter =
     role === 'driver'
-      ? { driver: userId, isDeleted: false }
-      : { passenger: userId, isDeleted: false };
+      ? { driver: userId, isDeleted: false}
+      : { passenger: userId, isDeleted: false};
 
   const rideQuery = new QueryBuilder(
      Ride.find(filter).select(
